@@ -86,3 +86,17 @@ Gate 通过，建议进入 M1（只读预览）。体积与冷启动在预估区
 - **测试**：17 单测（vitest）+ 6 fixture e2e。fixtures 生成脚本 `test/fixtures/make_m1_fixtures.py`。
 
 **M1 已知边界**（按计划属后续里程碑）：Univer 引擎恒为只读（M2 编辑+增量导出）；批注/数据验证/工作表保护/图片浮层未映射（M3）；外链点击在 webview 内的拦截桥未接（M3）；legacy 引擎仍静态打包在主包（M3 默认切换时再拆）。F5 手测清单同 Phase 0 遗留项。
+
+---
+
+# M2 完成记录（2026-07-06，commit d3286f8）
+
+**验收结论：M2 全部达成。** Univer 引擎可编辑，Ctrl+S 走增量导出。
+
+- **增量导出模型落地**（本路线核心卖点）：`diff.ts`（cell 值/样式粒度 + 合并/行列尺寸/冻结/改名/sheet 增删排序）→ `apply.ts` 应用到保留的原始 workbook。**验收断言全过**：只改 A1 → 批注（含 A1 自己的批注）/条件格式/definedNames/自定义 numFmt/未编辑 sheet 原样保留；零编辑保存不破坏文件。
+- **结构性变更兜底（计划 R4 方案 B）**：adapter 编辑会话监听 `sheet.mutation.(insert-row|remove-rows|...)` 记录结构日志，涉事 sheet 整表重建，未涉事 sheet 仍增量——e2e 实测 facade `insertRowBefore` 正确触发重建且行位移正确。
+- **保存流程**：dirty 经 CommandExecuted → `handler.emit('change')`；图表/透视表/宏文件保存前警告一次（现状是这些文件打不开，静默丢失都轮不到）；非 xlsx 保存且格式变更过时弹三选确认（与 legacy 行为一致）；另存为四格式接通；保存后基线/结构日志/sheetIdMap 同步推进。
+- **测试**：26 单测（含 9 项往返断言）+ 浏览器 e2e（真实 Univer mutation → dirty → 结构日志 → 保存字节校验）。
+- 体积不变（增量导出模块并入懒加载 chunk，仅 +2KB）。
+
+**M2 已知边界**：结构性编辑过的 sheet 会丢失该 sheet 上 Univer 未建模的特性（批注/CF/DV），M4 用 mutation 重放方案改进；富文本写回为基础版（逐 run 字体）；Univer 里新建的超链接尚未纳入导出（M3 hyperlink 全链路时一并处理）。
