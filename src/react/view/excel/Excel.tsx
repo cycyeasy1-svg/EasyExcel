@@ -12,8 +12,28 @@ import Spreadsheet from './x-spreadsheet/index';
 import FindReplacePanel from './FindReplacePanel';
 import { parseSpreadsheetLink } from './excel_hyperlink';
 import { initExcelLocale, t } from './excel_i18n';
+import { getConfigs } from '../../util/vscodeConfig.ts';
+import type { UniverAdapter } from './univer/adapter';
 
 initExcelLocale();
+
+type SpreadsheetEngine = 'legacy' | 'univer';
+
+/** 引擎选择：URL 参数（开发调试用）优先，其次宿主 {{configs}}，默认 legacy */
+function resolveEngine(): SpreadsheetEngine {
+    try {
+        const fromUrl = new URLSearchParams(window.location.search).get('engine');
+        if (fromUrl === 'univer' || fromUrl === 'legacy') return fromUrl;
+    } catch {
+        // ignore
+    }
+    return getConfigs()?.engine === 'univer' ? 'univer' : 'legacy';
+}
+
+const isZhLang = () => /^zh/i.test(getConfigs()?.language ?? '');
+
+/** 引擎在 webview 生命周期内不变，模块级解析一次（render 中不读 ref） */
+const ENGINE: SpreadsheetEngine = resolveEngine();
 
 type ExcelViewState = { ri: number; ci: number; sheetIndex: number };
 
@@ -84,9 +104,14 @@ function ExcelViewer() {
     const csvEncodingRef = useRef<'utf8' | 'gbk'>('utf8')
     const csvDelimiterRef = useRef(',')
     const initialFormattingRef = useRef('')
+    const engineRef = useRef<SpreadsheetEngine>(ENGINE)
+    const univerAdapterRef = useRef<UniverAdapter | null>(null)
+    const univerViewUnbindRef = useRef<(() => void) | null>(null)
+    const darkRef = useRef(dark)
 
     useEffect(() => {
         document.body.classList.toggle('office-dark', dark)
+        darkRef.current = dark
     }, [dark])
 
     const toggleDark = () => {
@@ -99,6 +124,7 @@ function ExcelViewer() {
 
     useEffect(() => {
         spreadSheetRef.current?.reRender()
+        univerAdapterRef.current?.setDarkMode(dark)
     }, [dark])
 
     const handleSaveAs = useCallback(() => {
@@ -110,6 +136,7 @@ function ExcelViewer() {
         zoomPercentRef.current = next;
         setZoomPercent(next);
         spreadSheetRef.current?.setZoom(next / 100);
+        univerAdapterRef.current?.setZoom(next / 100);
     }, []);
 
     const stepZoom = useCallback((direction: -1 | 1) => {
@@ -222,6 +249,19 @@ function ExcelViewer() {
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
+            if (engineRef.current === 'univer') {
+                // Ctrl+F/H 交给 Univer 自带查找替换；M1 只读预览阶段拦下 Ctrl+S
+                if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
+                    e.preventDefault();
+                    message.info({
+                        duration: 3,
+                        content: isZhLang()
+                            ? 'Univer 引擎当前为只读预览，编辑保存将在后续版本提供'
+                            : 'The Univer engine is currently a read-only preview; editing will be available in a later version',
+                    });
+                }
+                return;
+            }
             if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
                 e.preventDefault();
                 if (readOnlyRef.current) {
@@ -243,10 +283,45 @@ function ExcelViewer() {
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [handleSave, handleSaveAs]);
+    }, [handleSave, handleSaveAs, message]);
 
     useEffect(() => {
         const container = document.getElementById('container');
+
+        const initUniver = async (buffer: ArrayBuffer, payload: any) => {
+            univerViewUnbindRef.current?.();
+            univerViewUnbindRef.current = null;
+            univerAdapterRef.current?.dispose();
+            univerAdapterRef.current = null;
+            container.innerHTML = '';
+            container.style.height = '100vh';
+
+            const [{ UniverAdapter }, { loadForUniver }] = await Promise.all([
+                import('./univer/adapter'),
+                import('./univer/loader'),
+            ]);
+            const result = await loadForUniver(buffer, payload.ext ?? 'xlsx', payload.fileName ?? 'Workbook');
+            const adapter = UniverAdapter.create(container, {
+                darkMode: darkRef.current,
+                language: getConfigs()?.language,
+                readOnly: true,
+            });
+            univerAdapterRef.current = adapter;
+            setLoading(false);
+            // M1 阶段 Univer 引擎恒为只读预览
+            await adapter.loadWorkbook(result, { readOnly: true });
+            if (zoomPercentRef.current !== DEFAULT_ZOOM_PERCENT) {
+                adapter.setZoom(zoomPercentRef.current / 100);
+            }
+            const savedView = loadViewState(documentCacheIdRef.current);
+            if (savedView) {
+                adapter.restoreViewState(savedView);
+            }
+            univerViewUnbindRef.current = adapter.onViewStateChange(() => {
+                const vs = adapter.getViewState();
+                if (vs) saveViewState(documentCacheIdRef.current, vs);
+            });
+        };
 
         const initSpreadsheet = async (buffer: ArrayBuffer, payload: any) => {
             const fileReadOnly = payload.readOnly === true;
@@ -319,7 +394,11 @@ function ExcelViewer() {
             setReadOnly(fileReadOnly);
             loadOfficeBuffer(payload).then(async (buffer) => {
                 try {
-                    await initSpreadsheet(buffer, payload);
+                    if (engineRef.current === 'univer') {
+                        await initUniver(buffer, payload);
+                    } else {
+                        await initSpreadsheet(buffer, payload);
+                    }
                 } catch (e) {
                     const msg = (e as Error).message || String(e);
                     console.error(`Failed to load Excel file: ${msg}`, e);
@@ -345,6 +424,10 @@ function ExcelViewer() {
         return () => {
             spreadSheetRef.current = null;
             setActiveSpreadsheet(null);
+            univerViewUnbindRef.current?.();
+            univerViewUnbindRef.current = null;
+            univerAdapterRef.current?.dispose();
+            univerAdapterRef.current = null;
             themeObserver.disconnect();
             clearTimeout(themeTimer);
         };
@@ -371,7 +454,14 @@ function ExcelViewer() {
                     {t('viewer.readonlyBanner')}
                 </div>
             )}
-            {findPanel && !loading && !loadError && (
+            {ENGINE === 'univer' && !loading && !loadError && (
+                <div className="excel-readonly-banner">
+                    {isZhLang()
+                        ? 'Univer 引擎预览（只读）'
+                        : 'Univer engine preview (read-only)'}
+                </div>
+            )}
+            {ENGINE !== 'univer' && findPanel && !loading && !loadError && (
                 <FindReplacePanel
                     spreadSheet={activeSpreadsheet}
                     mode={findPanel}

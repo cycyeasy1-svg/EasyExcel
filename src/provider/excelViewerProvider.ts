@@ -37,6 +37,7 @@ export class ExcelViewerProvider implements vscode.CustomReadonlyEditorProvider 
 
         const handler = Handler.bind(webviewPanel, uri);
         handleExcelDocumentEvents(uri, handler);
-        return ReactApp.view(webview, { route: 'excel' });
+        const engine = vscode.workspace.getConfiguration('easyExcel').get<string>('engine', 'legacy');
+        return ReactApp.view(webview, { route: 'excel', engine });
     }
 }

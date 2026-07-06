@@ -28,6 +28,24 @@
 	],
 	"main": "./out/extension.js",
 	"contributes": {
+		"configuration": {
+			"title": "EasyExcel",
+			"properties": {
+				"easyExcel.engine": {
+					"type": "string",
+					"enum": [
+						"legacy",
+						"univer"
+					],
+					"default": "legacy",
+					"enumDescriptions": [
+						"Built-in x-spreadsheet engine (stable)",
+						"Univer engine preview (read-only in this version)"
+					],
+					"description": "Spreadsheet rendering engine. Univer offers higher rendering fidelity (theme colors, number formats, rich text, conditional formatting) and is currently a read-only preview."
+				}
+			}
+		},
 		"customEditors": [
 			{
 				"viewType": "easychen.easyExcel",
@@ -83,7 +101,6 @@
 		"exceljs": "^4.4.0",
 		"globals": "^17.7.0",
 		"jsdom": "^29.1.1",
-		"jszip": "^3.10.1",
 		"less": "^4.2.0",
 		"ovsx": "^1.0.2",
 		"vite": "^8.0.16",
@@ -98,6 +115,7 @@
 		"axios": "^1.18.1",
 		"buffer": "^6.0.3",
 		"iconv-lite": "^0.6.3",
+		"jszip": "^3.10.1",
 		"react": "^19.2.7",
 		"react-dom": "^19.2.7",
 		"udsv": "^0.5.3",
