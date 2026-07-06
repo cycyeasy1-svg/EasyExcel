@@ -100,3 +100,21 @@ Gate 通过，建议进入 M1（只读预览）。体积与冷启动在预估区
 - 体积不变（增量导出模块并入懒加载 chunk，仅 +2KB）。
 
 **M2 已知边界**：结构性编辑过的 sheet 会丢失该 sheet 上 Univer 未建模的特性（批注/CF/DV），M4 用 mutation 重放方案改进；富文本写回为基础版（逐 run 字体）；Univer 里新建的超链接尚未纳入导出（M3 hyperlink 全链路时一并处理）。
+
+---
+
+# M3 完成记录（2026-07-06，commit 8698621）
+
+**验收结论：功能对等达成，`easyExcel.engine` 默认已切换为 `univer`（legacy 为逃生开关）。**
+
+- **数据验证**：导入经 facade builder 应用（list/number/自定义公式），e2e 确认下拉框渲染；导出走 snapshot 资源 diff——DV 变更过的 sheet 覆盖式重写（Univer 与 ExcelJS 的 type/operator 字符串一一同名直通），未变更的 sheet 保留原文件 DV 原样。
+- **工作表保护**：`getWorksheetPermission().protect() + setReadOnly()`（坑：必须先 protect() 创建规则）；e2e 确认受保护 sheet 拒绝编辑、sheet bar 显示锁图标。**边界**：Excel 的 unlocked 例外单元格暂不支持（整表只读，保守方向）。
+- **浮动图片**：base64 → `insertImage(dataUrl, col, row)`，e2e 确认渲染。
+- **超链接闭环**：Univer 0.2x 把链接存在 `cell.p.body.customRanges`（rangeType=HYPERLINK）——已在 cell diff 覆盖范围内；导出侧识别覆盖全文的链接写回 ExcelJS 超链接值。Univer 里新建的链接现在保存后不丢。
+- **外链拦截**：hyperlink-ui 用 `window.open` 打开外链（webview 中无效）——adapter patch `window.open`，http/mailto 转 `handler.emit('openExternal')` 由宿主打开。
+- **fixture 真实性修正**：openpyxl 的 drawing 用默认命名空间（无 `xdr:` 前缀），会让 ExcelJS 字面量匹配崩溃——normalizer 现在改写为 Excel 的 `xdr:` 形态。带图片的真实文件加载正常；图表崩溃结论在真实形态下不变。
+- **测试**：31 单测 + e2e（DV 下拉/图片/保护拒编辑/window.open 拦截）。
+
+**M3 已知边界**：date 类型 DV 导入暂不映射（未编辑时导出仍保留原文件规则）；受保护 sheet 的 unlocked 例外不支持；工具栏"保存"按钮无（Ctrl+S / 另存对话框可用）；Univer 内对图片的编辑不纳入导出。
+
+**M4 待办**：条件格式编辑写回、富文本编辑完整往返、100k 行性能基准、结构变更 mutation 重放（消除 rebuilt 降级）、删除 x-spreadsheet（103 文件）与 legacy 开关、F5 手测清单执行。
