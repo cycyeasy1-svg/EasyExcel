@@ -1,0 +1,100 @@
+{
+	"name": "easyexcel",
+	"displayName": "EasyExcel",
+	"description": "Preview and edit Excel, CSV, TSV, and ODS files in VS Code.",
+	"version": "1.0.0",
+	"publisher": "easychen",
+	"author": "Easy Chen",
+	"icon": "image/logo.png",
+	"engines": {
+		"vscode": "^1.64.0"
+	},
+	"keywords": [
+		"excel",
+		"xlsx",
+		"xls",
+		"xlsm",
+		"csv",
+		"tsv",
+		"ods",
+		"spreadsheet"
+	],
+	"categories": [
+		"Visualization",
+		"Other"
+	],
+	"activationEvents": [
+		"onCustomEditor:easychen.easyExcel"
+	],
+	"main": "./out/extension.js",
+	"contributes": {
+		"customEditors": [
+			{
+				"viewType": "easychen.easyExcel",
+				"displayName": "EasyExcel",
+				"selector": [
+					{
+						"filenamePattern": "*.xls"
+					},
+					{
+						"filenamePattern": "*.xlsx"
+					},
+					{
+						"filenamePattern": "*.xlsm"
+					},
+					{
+						"filenamePattern": "*.csv"
+					},
+					{
+						"filenamePattern": "*.tsv"
+					},
+					{
+						"filenamePattern": "*.ods"
+					}
+				]
+			}
+		]
+	},
+	"scripts": {
+		"dev": "vite --mode=development",
+		"lint:fix": "eslint \"src/**/*.{ts,tsx}\" --fix",
+		"build": "vite build --mode=production",
+		"package": "vsce package --no-dependencies --allow-missing-repository",
+		"publish": "vsce publish --no-dependencies --allow-missing-repository && ovsx publish --no-dependencies",
+		"vscode:prepublish": "npm run build"
+	},
+	"devDependencies": {
+		"@types/node": "^26.1.0",
+		"@types/react": "^19.2.17",
+		"@types/react-dom": "^19.2.3",
+		"@types/vscode": "^1.64.0",
+		"@typescript-eslint/eslint-plugin": "^8.62.1",
+		"@typescript-eslint/parser": "^8.62.1",
+		"@vitejs/plugin-react": "^6.0.2",
+		"@vscode/vsce": "^3.9.2",
+		"esbuild": "^0.28.1",
+		"eslint": "^9.39.4",
+		"eslint-plugin-import-x": "^4.16.2",
+		"eslint-plugin-react": "^7.37.5",
+		"eslint-plugin-react-hooks": "^7.1.1",
+		"eslint-plugin-react-refresh": "^0.5.3",
+		"eslint-plugin-unused-imports": "^4.4.1",
+		"globals": "^17.7.0",
+		"less": "^4.2.0",
+		"ovsx": "^1.0.2",
+		"vite": "^8.0.16"
+	},
+	"dependencies": {
+		"@ant-design/icons": "^5.3.5",
+		"@cweijan/exceljs": "^5.0.0",
+		"@vscode/codicons": "^0.0.45",
+		"antd": "^5.15.4",
+		"axios": "^1.18.1",
+		"buffer": "^6.0.3",
+		"iconv-lite": "^0.6.3",
+		"react": "^19.2.7",
+		"react-dom": "^19.2.7",
+		"udsv": "^0.5.3",
+		"xlsx": "^0.18.5"
+	}
+}
