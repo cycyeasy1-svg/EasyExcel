@@ -72,3 +72,17 @@ fixtures：openpyxl 生成 + 规范化为 Excel 标准部件命名（`test/fixtu
 ## 结论
 
 Gate 通过，建议进入 M1（只读预览）。体积与冷启动在预估区间内且有明确优化手段；所有关键 API 均在免费包中核实；R1 的结论把「图表处理」从风险项变成了修复现有 bug 的机会。
+
+---
+
+# M1 完成记录（2026-07-06，commit a3672a6）
+
+**验收结论：M1 全部达成。** `easyExcel.engine: "univer"`（或 URL `?engine=univer`）启用只读预览。
+
+- **导入层**（`src/react/view/excel/univer/`）：theme_colors（主题色/tint/索引色）、import（ExcelJS→IWorkbookData 全保真装配）、sanitize（图表预清洗）、loader（xlsx/xls/ods/csv/tsv 统一入口）、adapter（生命周期/只读/暗色/缩放/视图恢复/超链接）。
+- **渲染验收**（Playwright 逐 fixture，全部零控制台错误）：accent1-6 主题色字体+填充、tint 深浅、indexed 色、白色填充保留；10 种奇异数字格式原样渲染（中文日期、分数、科学计数、自定义 `0.00"m"`）；富文本逐 run（粗红+16pt 斜体）；13 种边框样式各自可辨（double 真双线）；freeze {2,2} + 合并 + 行高列宽 + 多 sheet。
+- **含图表文件从「打不开」变为「可查看」**（sanitize 剥离 graphicFrame drawing part 后 ExcelJS 可 load；关键发现：光删 sheet 引用不够，drawing part 本身按文件名模式被扫描解析，必须一并移除）。
+- **体积**：主包不变（638.9KB gzip），Univer 隔离在懒加载 adapter chunk（1,670KB gzip）——legacy 用户零影响。
+- **测试**：17 单测（vitest）+ 6 fixture e2e。fixtures 生成脚本 `test/fixtures/make_m1_fixtures.py`。
+
+**M1 已知边界**（按计划属后续里程碑）：Univer 引擎恒为只读（M2 编辑+增量导出）；批注/数据验证/工作表保护/图片浮层未映射（M3）；外链点击在 webview 内的拦截桥未接（M3）；legacy 引擎仍静态打包在主包（M3 默认切换时再拆）。F5 手测清单同 Phase 0 遗留项。
