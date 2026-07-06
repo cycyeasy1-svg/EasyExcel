@@ -61,13 +61,36 @@ export default function UniverSpike() {
         await adapter.loadWorkbook(loadResult, { readOnly: params.has('readonly') });
         const bootMs = Math.round(performance.now() - t0);
         adapterRef.current = adapter;
-        (window as never as Record<string, unknown>).__univerSpike = {
+
+        // 编辑会话（与 Excel.tsx 相同流程）：基线 + dirty/结构日志 + 保存探针
+        const baseline = adapter.getWorkbookDataCopy();
+        let dirtyCount = 0;
+        const session = adapter.startEditSession(() => { dirtyCount += 1; });
+        const spike = {
             adapter,
             univerAPI: adapter.univerAPI,
             univer: adapter.univer,
             loadResult,
             bootMs,
+            get dirtyCount() { return dirtyCount; },
+            get structuralSheetIds() { return [...session.structuralSheetIds]; },
+            /** 完整保存链路（diff→apply→writeBuffer），返回 base64（e2e 校验用） */
+            async saveProbe(): Promise<string> {
+                const [{ diffWorkbook }, { applyDiffToWorkbook }] = await Promise.all([
+                    import('./diff'),
+                    import('./apply'),
+                ]);
+                const current = adapter.getWorkbookDataCopy() as never;
+                const diff = diffWorkbook(baseline as never, current, session.structuralSheetIds);
+                applyDiffToWorkbook(loadResult.originalWorkbook!, current, diff, { sheetIdMap: loadResult.sheetIdMap! });
+                const buffer = await loadResult.originalWorkbook!.xlsx.writeBuffer();
+                const bytes = new Uint8Array(buffer);
+                let bin = '';
+                for (let i = 0; i < bytes.length; i += 1) bin += String.fromCharCode(bytes[i]);
+                return btoa(bin);
+            },
         };
+        (window as never as Record<string, unknown>).__univerSpike = spike;
         setStatus(`ready in ${bootMs}ms`);
         return adapter;
     };

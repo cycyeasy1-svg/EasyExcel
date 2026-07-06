@@ -52,6 +52,18 @@ export interface UniverAdapterOptions {
     language?: string;
 }
 
+export interface UniverEditSession {
+    /** 发生过结构性变更（行列插删/移动）的 sheetId 集合 → 这些 sheet 保存时整表重建 */
+    structuralSheetIds: Set<string>;
+    /** 保存成功后调用：清空结构日志（baseline 已更新） */
+    reset(): void;
+    stop(): void;
+}
+
+/** 行列插删/移动类 mutation：使该 sheet 的逐格 diff 失效（注意 Univer 的
+ *  命名不对称：insert-row/remove-rows、insert-col/remove-col） */
+const STRUCTURAL_MUTATION = /^sheet\.mutation\.(insert-(row|col)|remove-(rows|col)|move-(rows|columns|range)|reorder-range)$/;
+
 /** 应用超链接的上限，防止极端文件逐链接跑命令拖慢加载 */
 const MAX_APPLIED_HYPERLINKS = 2000;
 
@@ -171,6 +183,49 @@ export class UniverAdapter {
         } catch {
             // 滚动恢复失败不阻断加载
         }
+    }
+
+    /** 当前 workbook 数据的深拷贝（diff 基线/当前态用） */
+    getWorkbookDataCopy(): unknown | null {
+        if (this.disposed) return null;
+        const fWorkbook = this.univerAPI.getActiveWorkbook();
+        if (!fWorkbook) return null;
+        return JSON.parse(JSON.stringify(fWorkbook.save()));
+    }
+
+    /**
+     * 开始编辑会话：监听 mutation 驱动 dirty 回调（首次变更触发一次），
+     * 并记录结构性变更的 sheet。必须在 loadWorkbook（含超链接应用）完成后调用。
+     */
+    startEditSession(onDirty: () => void): UniverEditSession {
+        const api = this.univerAPI as never as {
+            addEvent(name: string, cb: (p: { id?: string; params?: { subUnitId?: string } }) => void): { dispose(): void };
+            Event: Record<string, string>;
+        };
+        const structuralSheetIds = new Set<string>();
+        let dirtyNotified = false;
+        const disposable = api.addEvent(api.Event.CommandExecuted, (e) => {
+            const id = e?.id ?? '';
+            if (!id.startsWith('sheet.mutation.')) return;
+            if (STRUCTURAL_MUTATION.test(id)) {
+                const subUnitId = e.params?.subUnitId;
+                if (subUnitId) structuralSheetIds.add(subUnitId);
+            }
+            if (!dirtyNotified) {
+                dirtyNotified = true;
+                onDirty();
+            }
+        });
+        return {
+            structuralSheetIds,
+            reset() {
+                structuralSheetIds.clear();
+                dirtyNotified = false;
+            },
+            stop() {
+                disposable.dispose();
+            },
+        };
     }
 
     /** 选区/activeSheet 变化时回调（视图状态持久化用），返回解绑函数 */

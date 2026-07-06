@@ -35,6 +35,13 @@ const isZhLang = () => /^zh/i.test(getConfigs()?.language ?? '');
 /** 引擎在 webview 生命周期内不变，模块级解析一次（render 中不读 ref） */
 const ENGINE: SpreadsheetEngine = resolveEngine();
 
+/** Univer 编辑会话的保存上下文（initUniver 组装，保存后就地更新） */
+interface UniverSaveState {
+    loadResult: import('./univer/loader').UniverLoadResult;
+    baseline: import('@univerjs/core').IWorkbookData;
+    session: import('./univer/adapter').UniverEditSession;
+}
+
 type ExcelViewState = { ri: number; ci: number; sheetIndex: number };
 
 const EXCEL_VIEW_STATE_SUFFIX = '-excel-view';
@@ -107,6 +114,8 @@ function ExcelViewer() {
     const engineRef = useRef<SpreadsheetEngine>(ENGINE)
     const univerAdapterRef = useRef<UniverAdapter | null>(null)
     const univerViewUnbindRef = useRef<(() => void) | null>(null)
+    const univerCtxRef = useRef<UniverSaveState | null>(null)
+    const univerLossyWarnedRef = useRef(false)
     const darkRef = useRef(dark)
 
     useEffect(() => {
@@ -233,10 +242,110 @@ function ExcelViewer() {
         }
     }, [modal, handleSaveAs]);
 
+    const univerSave = useCallback(async (options?: { saveAs?: boolean; saveAsExt?: string }) => {
+        const adapter = univerAdapterRef.current;
+        const ctx = univerCtxRef.current;
+        if (!adapter || !ctx) return;
+
+        const { saveUniverWorkbook, hasFormattingChangedUniver } = await import('./univer/export');
+        const current = adapter.getWorkbookDataCopy() as UniverSaveState['baseline'] | null;
+        if (!current) return;
+
+        const targetExt = (options?.saveAs ? options.saveAsExt ?? 'xlsx' : extRef.current)
+            .replace(/^\./, '').toLowerCase();
+
+        // 图表/透视表/宏安全网：现状是这些文件根本打不开；现在可打开可编辑，
+        // 但 ExcelJS 无法承载这些部件，保存（含另存 xlsx）会丢失，明示一次
+        const lossy = ctx.loadResult.lossy;
+        const hasLossy = !!(lossy && (lossy.charts || lossy.pivotTables || lossy.vba));
+        if (hasLossy && (targetExt === 'xlsx' || targetExt === 'xlsm') && !univerLossyWarnedRef.current) {
+            const proceed = await new Promise<boolean>((resolve) => {
+                modal.confirm({
+                    title: isZhLang() ? '部分内容无法保留' : 'Some content cannot be preserved',
+                    content: isZhLang()
+                        ? '此文件包含图表、透视表或宏。当前引擎保存后这些内容将丢失（原文件在保存前不受影响）。'
+                        : 'This file contains charts, pivot tables or macros. Saving with the current engine will drop them (the original file is untouched until you save).',
+                    okText: isZhLang() ? '仍要保存' : 'Save anyway',
+                    cancelText: t('button.cancel'),
+                    centered: true,
+                    getContainer: () => document.body,
+                    onOk: () => resolve(true),
+                    onCancel: () => resolve(false),
+                });
+            });
+            if (!proceed) return;
+            univerLossyWarnedRef.current = true;
+        }
+
+        // 非 xlsx 目标：格式变更过则确认（与 legacy 行为一致）
+        if (targetExt !== 'xlsx' && targetExt !== 'xlsm'
+            && hasFormattingChangedUniver(ctx.baseline, current)) {
+            const choice = await new Promise<'xlsx' | 'original' | 'cancel'>((resolve) => {
+                const dialog = modal.confirm({
+                    title: t('viewer.formatCannotPreserveTitle'),
+                    content: t('viewer.formatCannotPreserveContent', targetExt.toUpperCase()),
+                    centered: true,
+                    getContainer: () => document.body,
+                    footer: () => (
+                        <>
+                            <Button style={{ padding: '3px 12px', height: 'auto' }} onClick={() => { dialog.destroy(); resolve('cancel'); }}>
+                                {t('button.cancel')}
+                            </Button>
+                            <Button style={{ padding: '3px 12px', height: 'auto' }} onClick={() => { dialog.destroy(); resolve('original'); }}>
+                                {t('viewer.saveAsOriginal')}
+                            </Button>
+                            <Button type="primary" style={{ padding: '3px 12px', height: 'auto' }} onClick={() => { dialog.destroy(); resolve('xlsx'); }}>
+                                {t('viewer.saveAsXlsx')}
+                            </Button>
+                        </>
+                    ),
+                });
+            });
+            if (choice === 'cancel') return;
+            if (choice === 'xlsx') {
+                await univerSaveInner(current, ctx, { saveAs: true, saveAsExt: 'xlsx' });
+                return;
+            }
+        }
+
+        await univerSaveInner(current, ctx, options);
+
+        async function univerSaveInner(
+            cur: UniverSaveState['baseline'],
+            saveCtx: UniverSaveState,
+            saveOptions?: { saveAs?: boolean; saveAsExt?: string },
+        ) {
+            try {
+                const { newSheetIdMap } = await saveUniverWorkbook(cur, {
+                    ext: extRef.current.replace(/^\./, '').toLowerCase() || 'xlsx',
+                    loadResult: saveCtx.loadResult,
+                    baseline: saveCtx.baseline,
+                    structuralSheetIds: saveCtx.session.structuralSheetIds,
+                    csvEncoding: csvEncodingRef.current,
+                    csvDelimiter: csvDelimiterRef.current,
+                }, saveOptions);
+                // 增量导出会把原始 workbook 推进到 current 状态：同步基线与会话
+                if (newSheetIdMap) saveCtx.loadResult.sheetIdMap = newSheetIdMap;
+                saveCtx.baseline = cur;
+                saveCtx.session.reset();
+            } catch (error) {
+                console.error(`Failed to save Excel file: ${(error as Error).message}`, error);
+                message.error({
+                    duration: 3,
+                    content: isZhLang() ? '保存失败，详见开发者工具控制台' : 'Save failed, see developer console',
+                });
+            }
+        }
+    }, [modal, message]);
+
     const confirmSaveAs = useCallback(async (fmt: string) => {
+        setSaveAsVisible(false);
+        if (engineRef.current === 'univer') {
+            await univerSave({ saveAs: true, saveAsExt: fmt });
+            return;
+        }
         const spreadSheet = spreadSheetRef.current;
         if (!spreadSheet) return;
-        setSaveAsVisible(false);
         try {
             await exportSaveAs(spreadSheet, fmt, csvEncodingRef.current, csvDelimiterRef.current);
             if (!readOnlyRef.current) {
@@ -245,20 +354,19 @@ function ExcelViewer() {
         } catch (error) {
             console.error(`Failed to save Excel file: ${(error as Error).message}`);
         }
-    }, []);
+    }, [univerSave]);
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             if (engineRef.current === 'univer') {
-                // Ctrl+F/H 交给 Univer 自带查找替换；M1 只读预览阶段拦下 Ctrl+S
+                // Ctrl+F/H 交给 Univer 自带查找替换
                 if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
                     e.preventDefault();
-                    message.info({
-                        duration: 3,
-                        content: isZhLang()
-                            ? 'Univer 引擎当前为只读预览，编辑保存将在后续版本提供'
-                            : 'The Univer engine is currently a read-only preview; editing will be available in a later version',
-                    });
+                    if (readOnlyRef.current) {
+                        void handleSaveAs();
+                    } else {
+                        void univerSave();
+                    }
                 }
                 return;
             }
@@ -283,33 +391,43 @@ function ExcelViewer() {
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [handleSave, handleSaveAs, message]);
+    }, [handleSave, handleSaveAs, message, univerSave]);
 
     useEffect(() => {
         const container = document.getElementById('container');
 
         const initUniver = async (buffer: ArrayBuffer, payload: any) => {
+            const fileReadOnly = payload.readOnly === true;
             univerViewUnbindRef.current?.();
             univerViewUnbindRef.current = null;
+            univerCtxRef.current?.session.stop();
+            univerCtxRef.current = null;
             univerAdapterRef.current?.dispose();
             univerAdapterRef.current = null;
+            univerLossyWarnedRef.current = false;
             container.innerHTML = '';
             container.style.height = '100vh';
+
+            if (payload.ext?.match(/csv/i)) {
+                csvEncodingRef.current = detectCsvEncoding(buffer);
+            }
 
             const [{ UniverAdapter }, { loadForUniver }] = await Promise.all([
                 import('./univer/adapter'),
                 import('./univer/loader'),
             ]);
             const result = await loadForUniver(buffer, payload.ext ?? 'xlsx', payload.fileName ?? 'Workbook');
+            if (result.csvDelimiter) {
+                csvDelimiterRef.current = result.csvDelimiter;
+            }
             const adapter = UniverAdapter.create(container, {
                 darkMode: darkRef.current,
                 language: getConfigs()?.language,
-                readOnly: true,
+                readOnly: fileReadOnly,
             });
             univerAdapterRef.current = adapter;
             setLoading(false);
-            // M1 阶段 Univer 引擎恒为只读预览
-            await adapter.loadWorkbook(result, { readOnly: true });
+            await adapter.loadWorkbook(result, { readOnly: fileReadOnly });
             if (zoomPercentRef.current !== DEFAULT_ZOOM_PERCENT) {
                 adapter.setZoom(zoomPercentRef.current / 100);
             }
@@ -321,6 +439,15 @@ function ExcelViewer() {
                 const vs = adapter.getViewState();
                 if (vs) saveViewState(documentCacheIdRef.current, vs);
             });
+
+            // 基线必须在超链接应用与视图恢复之后取（此后的 mutation 才算用户编辑）
+            const baseline = adapter.getWorkbookDataCopy() as UniverSaveState['baseline'] | null;
+            if (baseline) {
+                const session = adapter.startEditSession(() => {
+                    if (!fileReadOnly) handler.emit('change');
+                });
+                univerCtxRef.current = { loadResult: result, baseline, session };
+            }
         };
 
         const initSpreadsheet = async (buffer: ArrayBuffer, payload: any) => {
@@ -426,6 +553,8 @@ function ExcelViewer() {
             setActiveSpreadsheet(null);
             univerViewUnbindRef.current?.();
             univerViewUnbindRef.current = null;
+            univerCtxRef.current?.session.stop();
+            univerCtxRef.current = null;
             univerAdapterRef.current?.dispose();
             univerAdapterRef.current = null;
             themeObserver.disconnect();
@@ -452,13 +581,6 @@ function ExcelViewer() {
             {readOnly && !loading && !loadError && (
                 <div className="excel-readonly-banner">
                     {t('viewer.readonlyBanner')}
-                </div>
-            )}
-            {ENGINE === 'univer' && !loading && !loadError && (
-                <div className="excel-readonly-banner">
-                    {isZhLang()
-                        ? 'Univer 引擎预览（只读）'
-                        : 'Univer engine preview (read-only)'}
                 </div>
             )}
             {ENGINE !== 'univer' && findPanel && !loading && !loadError && (

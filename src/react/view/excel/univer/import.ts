@@ -34,6 +34,8 @@ export interface UniverImportResult {
     originalWorkbook: ExcelJS.Workbook;
     /** 超链接列表（导入后经 facade setHyperLink 应用） */
     hyperlinks: { sheetId: string; row: number; column: number; url: string; display?: string }[];
+    /** Univer sheetId → ExcelJS worksheet.id（增量导出定位用） */
+    sheetIdMap: Record<string, number>;
 }
 
 const BORDER_STYLE_MAP: Record<string, BorderStyleTypes> = {
@@ -418,10 +420,12 @@ export function convertExcelJsToUniver(workbook: ExcelJS.Workbook, name: string)
 
     const sheets: Record<string, Partial<IWorksheetData>> = {};
     const sheetOrder: string[] = [];
+    const sheetIdMap: Record<string, number> = {};
     workbook.worksheets.forEach((worksheet, i) => {
         const sheetId = `sheet-${i + 1}`;
         sheets[sheetId] = convertWorksheet(worksheet, sheetId, palette, styleRegistry, hyperlinks);
         sheetOrder.push(sheetId);
+        sheetIdMap[sheetId] = worksheet.id;
     });
 
     const workbookData = {
@@ -435,5 +439,5 @@ export function convertExcelJsToUniver(workbook: ExcelJS.Workbook, name: string)
         resources: [],
     } as unknown as IWorkbookData;
 
-    return { workbookData, originalWorkbook: workbook, hyperlinks };
+    return { workbookData, originalWorkbook: workbook, hyperlinks, sheetIdMap };
 }

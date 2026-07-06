@@ -40,9 +40,9 @@
 					"default": "legacy",
 					"enumDescriptions": [
 						"Built-in x-spreadsheet engine (stable)",
-						"Univer engine preview (read-only in this version)"
+						"Univer engine (beta): higher rendering fidelity and incremental save that preserves unedited features"
 					],
-					"description": "Spreadsheet rendering engine. Univer offers higher rendering fidelity (theme colors, number formats, rich text, conditional formatting) and is currently a read-only preview."
+					"description": "Spreadsheet rendering engine. Univer offers higher rendering fidelity (theme colors, number formats, rich text) and incremental xlsx export that preserves comments, conditional formatting and other features of unedited cells."
 				}
 			}
 		},
