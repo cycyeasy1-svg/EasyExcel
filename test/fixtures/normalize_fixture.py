@@ -21,6 +21,23 @@ CT_FIXES = {
 }
 
 
+import re
+
+
+def xdr_prefix_drawing(text: str) -> str:
+    """openpyxl 把 spreadsheetDrawing 写成默认命名空间；Excel 用 xdr: 前缀，
+    ExcelJS 解析器按字面量匹配 xdr:*，这里改写成 Excel 形态。"""
+    if "xmlns=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\"" not in text:
+        return text
+    text = text.replace(
+        'xmlns="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"',
+        'xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"',
+    )
+    # 给所有无前缀元素加 xdr:（a:/r: 等已带前缀的不动）
+    text = re.sub(r"<(/?)(?!(?:[a-zA-Z0-9]+:)|!|\?)([a-zA-Z][\w]*)", r"<\1xdr:\2", text)
+    return text
+
+
 def normalize(path: str) -> None:
     src = zipfile.ZipFile(path)
     items = {n: src.read(n) for n in src.namelist()}
@@ -35,6 +52,8 @@ def normalize(path: str) -> None:
             for old, new in table.items():
                 text = text.replace(old, new)
             data = text.encode("utf-8")
+        elif re.match(r"xl/drawings/drawing\d+\.xml$", name):
+            data = xdr_prefix_drawing(data.decode("utf-8")).encode("utf-8")
         out[new_name] = data
 
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:

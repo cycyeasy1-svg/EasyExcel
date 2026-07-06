@@ -22,6 +22,9 @@ import {
     type IWorksheetData,
 } from '@univerjs/core';
 import { extractThemeXml, parseThemePalette, resolveExcelColor, type ExcelColorLike } from './theme_colors';
+import { readWorksheetValidations, type SpreadsheetValidationItem } from '../excel_validation';
+import { readWorksheetImages, type SheetImage } from '../excel_images';
+import { isWorksheetProtected } from '../excel_protection';
 
 const DEFAULT_COL_WIDTH_PX = 88;
 const DEFAULT_ROW_HEIGHT_PX = 24;
@@ -36,6 +39,14 @@ export interface UniverImportResult {
     hyperlinks: { sheetId: string; row: number; column: number; url: string; display?: string }[];
     /** Univer sheetId → ExcelJS worksheet.id（增量导出定位用） */
     sheetIdMap: Record<string, number>;
+    /** 每 sheet 的附加特性（DV/图片/保护），加载后经 facade 应用 */
+    sheetFeatures: Record<string, SheetFeatures>;
+}
+
+export interface SheetFeatures {
+    validations: SpreadsheetValidationItem[];
+    images: SheetImage[];
+    protected: boolean;
 }
 
 const BORDER_STYLE_MAP: Record<string, BorderStyleTypes> = {
@@ -421,11 +432,17 @@ export function convertExcelJsToUniver(workbook: ExcelJS.Workbook, name: string)
     const sheets: Record<string, Partial<IWorksheetData>> = {};
     const sheetOrder: string[] = [];
     const sheetIdMap: Record<string, number> = {};
+    const sheetFeatures: Record<string, SheetFeatures> = {};
     workbook.worksheets.forEach((worksheet, i) => {
         const sheetId = `sheet-${i + 1}`;
         sheets[sheetId] = convertWorksheet(worksheet, sheetId, palette, styleRegistry, hyperlinks);
         sheetOrder.push(sheetId);
         sheetIdMap[sheetId] = worksheet.id;
+        sheetFeatures[sheetId] = {
+            validations: safeRead(() => readWorksheetValidations(worksheet), []),
+            images: safeRead(() => readWorksheetImages(worksheet, workbook), []),
+            protected: safeRead(() => isWorksheetProtected(worksheet), false),
+        };
     });
 
     const workbookData = {
@@ -439,5 +456,13 @@ export function convertExcelJsToUniver(workbook: ExcelJS.Workbook, name: string)
         resources: [],
     } as unknown as IWorkbookData;
 
-    return { workbookData, originalWorkbook: workbook, hyperlinks, sheetIdMap };
+    return { workbookData, originalWorkbook: workbook, hyperlinks, sheetIdMap, sheetFeatures };
+}
+
+function safeRead<T>(fn: () => T, fallback: T): T {
+    try {
+        return fn();
+    } catch {
+        return fallback;
+    }
 }

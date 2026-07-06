@@ -18,6 +18,8 @@ export interface UniverLoadResult {
     hyperlinks: UniverImportResult['hyperlinks'];
     /** xlsx/xlsm 才有：Univer sheetId → ExcelJS worksheet.id */
     sheetIdMap?: UniverImportResult['sheetIdMap'];
+    /** xlsx/xlsm 才有：每 sheet 的 DV/图片/保护 */
+    sheetFeatures?: UniverImportResult['sheetFeatures'];
     /** 打开时探测到的 ExcelJS 无法承载的特性（保存前警告用） */
     lossy?: SanitizeResult['lossy'];
     csvDelimiter?: string;
@@ -50,6 +52,7 @@ async function loadXlsx(buffer: ArrayBuffer, name: string): Promise<UniverLoadRe
         originalWorkbook: result.originalWorkbook,
         hyperlinks: result.hyperlinks,
         sheetIdMap: result.sheetIdMap,
+        sheetFeatures: result.sheetFeatures,
         lossy: sanitized.lossy,
     };
 }

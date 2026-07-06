@@ -10,7 +10,7 @@
 import type * as ExcelJS from '@cweijan/exceljs';
 import type { ICellData, IRange, IStyleData, IWorkbookData, IWorksheetData } from '@univerjs/core';
 import { applyUniverStyleToCell, univerRunStyleToExcelFont } from './export_styles';
-import type { CellChange, SheetDiff, WorkbookDiff } from './diff';
+import type { CellChange, SheetDiff, UniverDvRule, WorkbookDiff } from './diff';
 
 const COL_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -42,8 +42,26 @@ const isDateLikePattern = (pattern?: string | null): boolean => {
 export const excelSerialToDate = (serial: number): Date =>
     new Date(Date.UTC(1899, 11, 30) + Math.round(serial * 86400000));
 
+interface DocBodyLike {
+    dataStream?: string;
+    textRuns?: { st: number; ed: number; ts?: IStyleData }[];
+    customRanges?: { startIndex: number; endIndex: number; rangeType?: number; properties?: { url?: string } }[];
+}
+
+/** cell.p 中覆盖全文的 HYPERLINK customRange（Univer 0.2x 的超链接存储形态） */
+function extractWholeCellHyperlink(p: ICellData['p']): { url: string; text: string } | null {
+    const body = (p as { body?: DocBodyLike })?.body;
+    if (!body?.dataStream) return null;
+    const text = body.dataStream.replace(/\r?\n$/, '');
+    const link = body.customRanges?.find(r => r.rangeType === 0 /* HYPERLINK */ && r.properties?.url);
+    if (!link?.properties?.url) return null;
+    // 仅当链接覆盖（近似）全文时降为 ExcelJS 单元格级超链接
+    if (link.startIndex > 0 || link.endIndex < text.length - 1) return null;
+    return { url: link.properties.url, text };
+}
+
 function richTextToExcelValue(p: ICellData['p']): ExcelJS.CellRichTextValue | null {
-    const body = (p as { body?: { dataStream?: string; textRuns?: { st: number; ed: number; ts?: IStyleData }[] } })?.body;
+    const body = (p as { body?: DocBodyLike })?.body;
     if (!body?.dataStream) return null;
     const text = body.dataStream.replace(/\r?\n$/, '').replace(/\r\n$/, '');
     const runs = [...(body.textRuns ?? [])].sort((a, b) => a.st - b.st);
@@ -75,6 +93,11 @@ function writeCellValue(cell: ExcelJS.Cell, data: ICellData, style: IStyleData |
         return;
     }
     if (data.p) {
+        const link = extractWholeCellHyperlink(data.p);
+        if (link) {
+            cell.value = { text: link.text || link.url, hyperlink: link.url } as ExcelJS.CellHyperlinkValue;
+            return;
+        }
         const rich = richTextToExcelValue(data.p);
         if (rich) {
             cell.value = rich;
@@ -204,6 +227,43 @@ export function writeFullSheet(
     }
 }
 
+/** Univer DV 规则 → ExcelJS dataValidations（type/operator 字符串同名直通） */
+const DV_TYPES = new Set(['whole', 'decimal', 'date', 'time', 'textLength', 'list', 'custom']);
+
+function writeSheetDataValidations(worksheet: ExcelJS.Worksheet, rules: UniverDvRule[]) {
+    const dvContainer = (worksheet as { dataValidations?: { model?: Record<string, unknown>; add?: (ref: string, v: unknown) => void } }).dataValidations;
+    if (!dvContainer) return;
+    if (dvContainer.model) {
+        // 覆盖式重写该 sheet 的全部 DV
+        for (const key of Object.keys(dvContainer.model)) delete dvContainer.model[key];
+    }
+    if (!dvContainer.add) return;
+    for (const rule of rules) {
+        const type = rule.type === 'listMultiple' ? 'list' : rule.type;
+        if (!type || !DV_TYPES.has(type)) continue;
+        const formulae: (string | number)[] = [];
+        if (rule.formula1 != null && rule.formula1 !== '') {
+            formulae.push(type === 'list' && !String(rule.formula1).startsWith('=')
+                ? `"${rule.formula1}"`
+                : rule.formula1);
+        }
+        if (rule.formula2 != null && rule.formula2 !== '') formulae.push(rule.formula2);
+        const dv = {
+            type,
+            allowBlank: rule.allowBlank !== false,
+            ...(rule.operator ? { operator: rule.operator } : {}),
+            formulae,
+        };
+        for (const range of rule.ranges ?? []) {
+            try {
+                dvContainer.add(rangeToAddr(range), dv);
+            } catch {
+                // 非法范围忽略
+            }
+        }
+    }
+}
+
 export interface ApplyContext {
     /** 导入时建立的 Univer sheetId → ExcelJS worksheet.id 映射 */
     sheetIdMap: Record<string, number>;
@@ -226,11 +286,14 @@ export function applyDiffToWorkbook(
         delete sheetIdMap[removedId];
     }
 
+    const dvChanged = new Set(diff.dvChangedSheetIds);
     for (const sheetDiff of diff.sheets) {
         const sheetData = current.sheets[sheetDiff.sheetId];
+        const dvRules = diff.dvRules[sheetDiff.sheetId] ?? [];
         if (sheetDiff.status === 'added') {
             const ws = workbook.addWorksheet(sheetDiff.name || sheetDiff.sheetId);
             writeFullSheet(ws, current, sheetData);
+            writeSheetDataValidations(ws, dvRules);
             sheetIdMap[sheetDiff.sheetId] = ws.id;
             continue;
         }
@@ -241,6 +304,7 @@ export function applyDiffToWorkbook(
             // 映射丢失（异常情况）：按新增处理，保证不丢数据
             const ws = workbook.addWorksheet(sheetDiff.name || sheetDiff.sheetId);
             writeFullSheet(ws, current, sheetData);
+            writeSheetDataValidations(ws, dvRules);
             sheetIdMap[sheetDiff.sheetId] = ws.id;
             continue;
         }
@@ -249,11 +313,16 @@ export function applyDiffToWorkbook(
             workbook.removeWorksheet(worksheet.id);
             const ws = workbook.addWorksheet(sheetDiff.name || sheetDiff.sheetId);
             writeFullSheet(ws, current, sheetData);
+            writeSheetDataValidations(ws, dvRules);
             sheetIdMap[sheetDiff.sheetId] = ws.id;
             continue;
         }
 
         applyIncremental(worksheet, sheetDiff);
+        // DV 变更过的 sheet：以 Univer 当前规则覆盖式重写（未变更则保留原文件 DV）
+        if (dvChanged.has(sheetDiff.sheetId)) {
+            writeSheetDataValidations(worksheet, dvRules);
+        }
     }
 
     // sheet 顺序：orderNo 决定写出顺序

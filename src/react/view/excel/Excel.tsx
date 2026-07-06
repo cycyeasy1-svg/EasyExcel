@@ -427,7 +427,10 @@ function ExcelViewer() {
             });
             univerAdapterRef.current = adapter;
             setLoading(false);
-            await adapter.loadWorkbook(result, { readOnly: fileReadOnly });
+            await adapter.loadWorkbook(result, {
+                readOnly: fileReadOnly,
+                onOpenExternal: (url) => handler.emit('openExternal', url),
+            });
             if (zoomPercentRef.current !== DEFAULT_ZOOM_PERCENT) {
                 adapter.setZoom(zoomPercentRef.current / 100);
             }

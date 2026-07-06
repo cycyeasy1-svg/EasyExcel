@@ -50,6 +50,8 @@ export interface UniverAdapterOptions {
     darkMode?: boolean;
     readOnly?: boolean;
     language?: string;
+    /** 外链打开回调（webview 中 window.open 不可用，转宿主打开） */
+    onOpenExternal?: (url: string) => void;
 }
 
 export interface UniverEditSession {
@@ -109,12 +111,51 @@ export class UniverAdapter {
     }
 
     async loadWorkbook(result: UniverLoadResult, opts: UniverAdapterOptions) {
+        if (opts.onOpenExternal) {
+            this.patchWindowOpen(opts.onOpenExternal);
+        }
         const fWorkbook = this.univerAPI.createWorkbook(result.workbookData as IWorkbookData);
         await this.applyHyperlinks(result);
+        await this.applySheetFeatures(result);
         if (opts.readOnly) {
             fWorkbook.setEditable(false);
         }
         return fWorkbook;
+    }
+
+    /** hyperlink-ui 用 window.open 打开外链；webview 中不可用，转宿主 */
+    private patchWindowOpen(onOpenExternal: (url: string) => void) {
+        const original = window.open.bind(window);
+        window.open = ((url?: string | URL, target?: string, features?: string) => {
+            const href = url == null ? '' : String(url);
+            if (/^(https?:|mailto:)/i.test(href)) {
+                onOpenExternal(href);
+                return null;
+            }
+            return original(url as never, target, features);
+        }) as typeof window.open;
+    }
+
+    private async applySheetFeatures(result: UniverLoadResult) {
+        const features = result.sheetFeatures;
+        if (!features) return;
+        const fWorkbook = this.univerAPI.getActiveWorkbook();
+        if (!fWorkbook) return;
+        const { applyValidationsToSheet, applyImagesToSheet, applyProtectionToSheet } = await import('./features');
+        for (const [sheetId, f] of Object.entries(features)) {
+            const sheet = fWorkbook.getSheetBySheetId(sheetId);
+            if (!sheet) continue;
+            const sheetLike = sheet as never;
+            if (f.validations.length) {
+                await applyValidationsToSheet(this.univerAPI as never, sheetLike, f.validations);
+            }
+            if (f.images.length) {
+                await applyImagesToSheet(sheetLike, f.images);
+            }
+            if (f.protected) {
+                await applyProtectionToSheet(sheetLike);
+            }
+        }
     }
 
     private async applyHyperlinks(result: UniverLoadResult) {

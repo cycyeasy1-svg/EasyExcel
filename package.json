@@ -37,10 +37,10 @@
 						"legacy",
 						"univer"
 					],
-					"default": "legacy",
+					"default": "univer",
 					"enumDescriptions": [
-						"Built-in x-spreadsheet engine (stable)",
-						"Univer engine (beta): higher rendering fidelity and incremental save that preserves unedited features"
+						"Legacy x-spreadsheet engine (escape hatch)",
+						"Univer engine: higher rendering fidelity and incremental save that preserves unedited features"
 					],
 					"description": "Spreadsheet rendering engine. Univer offers higher rendering fidelity (theme colors, number formats, rich text) and incremental xlsx export that preserves comments, conditional formatting and other features of unedited cells."
 				}

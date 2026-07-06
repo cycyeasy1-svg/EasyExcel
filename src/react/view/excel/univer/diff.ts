@@ -35,11 +35,40 @@ export interface SheetDiff {
     freeze?: IFreeze | null;
 }
 
+/** Univer DV 规则（宽松形态；type/operator 字符串与 ExcelJS 同名） */
+export interface UniverDvRule {
+    uid?: string;
+    type?: string;
+    ranges?: IRange[];
+    formula1?: string;
+    formula2?: string;
+    operator?: string;
+    allowBlank?: boolean;
+}
+
 export interface WorkbookDiff {
     sheets: SheetDiff[];
     removedSheetIds: string[];
     orderChanged: boolean;
     isEmpty: boolean;
+    /** 当前每 sheet 的 DV 规则（来自 snapshot resources） */
+    dvRules: Record<string, UniverDvRule[]>;
+    /** DV 相对 baseline 变更过的 sheetId */
+    dvChangedSheetIds: string[];
+}
+
+const DV_PLUGIN = 'SHEET_DATA_VALIDATION_PLUGIN';
+
+function parseDvResource(wb: IWorkbookData): Record<string, UniverDvRule[]> {
+    const resources = (wb as { resources?: { name: string; data: string }[] }).resources ?? [];
+    const entry = resources.find(r => r.name === DV_PLUGIN);
+    if (!entry?.data) return {};
+    try {
+        const parsed = JSON.parse(entry.data) as Record<string, UniverDvRule[]>;
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+        return {};
+    }
 }
 
 const stableStringify = (value: unknown): string => {
@@ -229,8 +258,19 @@ export function diffWorkbook(
     const orderChanged = stableStringify(remainingBaseOrder) !== stableStringify(currentOldOrder)
         || current.sheetOrder.some((id, i) => !baseIds.has(id) && i !== current.sheetOrder.length - 1);
 
+    const baseDv = parseDvResource(baseline);
+    const curDv = parseDvResource(current);
+    const dvChangedSheetIds: string[] = [];
+    for (const sheetId of new Set([...Object.keys(baseDv), ...Object.keys(curDv)])) {
+        if (!current.sheetOrder.includes(sheetId)) continue;
+        if (stableStringify(baseDv[sheetId] ?? []) !== stableStringify(curDv[sheetId] ?? [])) {
+            dvChangedSheetIds.push(sheetId);
+        }
+    }
+
     const isEmpty = removedSheetIds.length === 0
         && !orderChanged
+        && dvChangedSheetIds.length === 0
         && sheets.every(s => s.status === 'incremental'
             && !s.renamed
             && !s.cellChanges.length
@@ -240,7 +280,7 @@ export function diffWorkbook(
             && !s.colChanges.length
             && !s.freezeChanged);
 
-    return { sheets, removedSheetIds, orderChanged, isEmpty };
+    return { sheets, removedSheetIds, orderChanged, isEmpty, dvRules: curDv, dvChangedSheetIds };
 }
 
 /** 单工作簿的格式投影（样式/合并/冻结/行高列宽），用于「格式是否变更过」对比 */
