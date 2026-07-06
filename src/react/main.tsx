@@ -1,4 +1,5 @@
 import './polyfills/buffer';
+import { lazy, Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import './util/vscode.js';
 import './main.css';
@@ -8,7 +9,19 @@ import Excel from './view/excel/Excel.tsx';
 
 document.getElementById('_defaultStyles')?.parentNode?.removeChild(document.getElementById('_defaultStyles'));
 
+// Phase 0 spike entry (?univer-spike): lazy so the Univer chunk stays out of
+// the default load path.
+const UniverSpike = lazy(() => import('./view/excel/univer/UniverSpike.tsx'));
+const useUniverSpike = new URLSearchParams(window.location.search).has('univer-spike');
+
 export default function App() {
+  if (useUniverSpike) {
+    return (
+      <Suspense fallback={<div>loading univer spike…</div>}>
+        <UniverSpike />
+      </Suspense>
+    );
+  }
   return <Excel />;
 }
 
