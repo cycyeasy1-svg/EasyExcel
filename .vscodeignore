@@ -1,5 +1,7 @@
 .github/**
 .vscode/**
+docs/**
+test/**
 .vscode-test/**
 out/test/**
 src/**

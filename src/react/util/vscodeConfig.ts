@@ -2,7 +2,7 @@ let configs = null;
 
 export function getConfigs() {
     if (configs) return configs;
-    const elem = document.getElementById('office-configs')
+    const elem = document.getElementById('easyexcel-configs')
     const value = elem.getAttribute('data-config');
     if (value == '{{configs}}') return null;
     configs = JSON.parse(value);

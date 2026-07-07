@@ -6,6 +6,7 @@
 	"publisher": "easychen",
 	"author": "Easy Chen",
 	"icon": "image/logo.png",
+	"license": "MIT",
 	"engines": {
 		"vscode": "^1.64.0"
 	},
@@ -57,6 +58,7 @@
 	},
 	"scripts": {
 		"dev": "vite --mode=development",
+		"test": "vitest run",
 		"lint:fix": "eslint \"src/**/*.{ts,tsx}\" --fix",
 		"build": "vite build --mode=production",
 		"package": "vsce package --no-dependencies --allow-missing-repository",

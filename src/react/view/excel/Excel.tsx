@@ -2,7 +2,7 @@ import { ExportOutlined, MinusOutlined, MoonOutlined, PlusOutlined, SaveOutlined
 import { App, Button, Modal, Radio, Spin } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { handler, loadDarkMode, applyDarkMode } from "../../util/vscode.ts";
-import { loadOfficeBuffer } from "../../util/loadOfficeContent.ts";
+import { loadWorkbookBuffer } from "../../util/loadWorkbookContent.ts";
 import './Excel.less';
 import { detectCsvEncoding } from "./csvEncoding.ts";
 import { initExcelLocale, t } from './excel_i18n';
@@ -79,7 +79,7 @@ function ExcelViewer() {
     const darkRef = useRef(dark)
 
     useEffect(() => {
-        document.body.classList.toggle('office-dark', dark)
+        document.body.classList.toggle('easyexcel-dark', dark)
         darkRef.current = dark
         univerAdapterRef.current?.setDarkMode(dark)
     }, [dark])
@@ -314,7 +314,7 @@ function ExcelViewer() {
             const fileReadOnly = payload.readOnly === true;
             readOnlyRef.current = fileReadOnly;
             setReadOnly(fileReadOnly);
-            loadOfficeBuffer(payload).then(async (buffer) => {
+            loadWorkbookBuffer(payload).then(async (buffer) => {
                 try {
                     await initUniver(buffer, payload);
                 } catch (e) {

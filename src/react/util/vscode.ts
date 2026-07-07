@@ -2,7 +2,7 @@ const vscode = window['acquireVsCodeApi']?.();
 export { vscode as vscodeApi };
 const postMessage = (message) => { if (vscode) { vscode.postMessage(message) } }
 
-const DARK_MODE_KEY = 'office-dark-mode';
+const DARK_MODE_KEY = 'easyexcel-dark-mode';
 
 export function loadDarkMode(): boolean {
     const state = vscode?.getState?.() as { darkMode?: boolean } | undefined;
@@ -27,7 +27,7 @@ export function saveDarkMode(dark: boolean) {
 }
 
 export function applyDarkMode(dark: boolean) {
-    document.body.classList.toggle('office-dark', dark);
+    document.body.classList.toggle('easyexcel-dark', dark);
     saveDarkMode(dark);
 }
 

@@ -1,10 +1,10 @@
-export interface OfficeOpenPayload {
+export interface WorkbookOpenPayload {
     path?: string;
     buffer?: number[];
     error?: string;
 }
 
-export function arrayBufferFromPayload(payload: OfficeOpenPayload): ArrayBuffer {
+export function arrayBufferFromPayload(payload: WorkbookOpenPayload): ArrayBuffer {
     if (payload.error) {
         throw new Error(payload.error);
     }
@@ -18,7 +18,7 @@ export function arrayBufferFromPayload(payload: OfficeOpenPayload): ArrayBuffer 
     return bytes.buffer;
 }
 
-export async function loadOfficeBuffer(payload: OfficeOpenPayload): Promise<ArrayBuffer> {
+export async function loadWorkbookBuffer(payload: WorkbookOpenPayload): Promise<ArrayBuffer> {
     if (payload.buffer) {
         return arrayBufferFromPayload(payload);
     }
