@@ -39,6 +39,9 @@ export default defineConfig(({ command, mode }) => ({
     },
     host: '127.0.0.1',
     port: 5739,
+    // 扩展宿主 dev 模式硬编码从 5739 取 webview（reactApp.ts）：
+    // 端口被占时必须立刻失败，静默换端口会让 webview 白屏/断言
+    strictPort: true,
     fs: {
       allow: ['..'],
     },

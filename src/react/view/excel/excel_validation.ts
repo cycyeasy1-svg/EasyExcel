@@ -9,19 +9,6 @@ export interface SpreadsheetValidationItem {
     value?: string | string[] | number;
 }
 
-type ExcelOperator = NonNullable<ExcelJS.DataValidation['operator']>;
-
-const SS_TO_EXCEL_OPERATOR: Record<string, ExcelOperator> = {
-    be: 'between',
-    nbe: 'notBetween',
-    eq: 'equal',
-    neq: 'notEqual',
-    lt: 'lessThan',
-    lte: 'lessThanOrEqual',
-    gt: 'greaterThan',
-    gte: 'greaterThanOrEqual',
-};
-
 const EXCEL_TO_SS_OPERATOR: Record<string, string> = {
     between: 'be',
     notBetween: 'nbe',
@@ -40,13 +27,6 @@ function parseListFormula(raw: unknown): string {
         text = text.slice(1, -1);
     }
     return text;
-}
-
-function toFormulaValue(value: string | number): string | number {
-    if (typeof value === 'number') return value;
-    const trimmed = value.trim();
-    if (trimmed !== '' && !Number.isNaN(Number(trimmed))) return Number(trimmed);
-    return trimmed;
 }
 
 function refTopLeft(ref: string): string {
@@ -156,86 +136,4 @@ export function readWorksheetValidations(worksheet: ExcelJS.Worksheet): Spreadsh
         if (converted) items.push(converted);
     }
     return items;
-}
-
-export function spreadsheetValidationToExcel(
-    item: SpreadsheetValidationItem,
-    ref?: string,
-): ExcelJS.DataValidation | null {
-    const { type, operator, value, required } = item;
-    const allowBlank = !required;
-
-    if (type === 'list') {
-        const list = Array.isArray(value) ? value.join(',') : String(value ?? '');
-        return {
-            type: 'list',
-            allowBlank,
-            formulae: [`"${list}"`],
-        };
-    }
-    if (type === 'number') {
-        const excelOp = operator ? SS_TO_EXCEL_OPERATOR[operator] : undefined;
-        if (excelOp === 'between' || excelOp === 'notBetween') {
-            const arr = Array.isArray(value) ? value : ['', ''];
-            return {
-                type: 'decimal',
-                allowBlank,
-                operator: excelOp,
-                formulae: [toFormulaValue(arr[0]), toFormulaValue(arr[1])],
-            };
-        }
-        return {
-            type: 'decimal',
-            allowBlank,
-            operator: excelOp,
-            formulae: [toFormulaValue(Array.isArray(value) ? value[0] : String(value ?? ''))],
-        };
-    }
-    if (type === 'date') {
-        const excelOp = operator ? SS_TO_EXCEL_OPERATOR[operator] : undefined;
-        if (excelOp === 'between' || excelOp === 'notBetween') {
-            const arr = Array.isArray(value) ? value : ['', ''];
-            return {
-                type: 'date',
-                allowBlank,
-                operator: excelOp,
-                formulae: [arr[0], arr[1]],
-            };
-        }
-        return {
-            type: 'date',
-            allowBlank,
-            operator: excelOp,
-            formulae: [Array.isArray(value) ? value[0] : String(value ?? '')],
-        };
-    }
-    if (type === 'email' || type === 'phone') {
-        const cell = refTopLeft(ref ?? item.refs[0] ?? 'A1');
-        const formula = type === 'phone' ? buildPhoneFormula(cell) : buildEmailFormula(cell);
-        return {
-            type: 'custom',
-            allowBlank,
-            formulae: [`=${formula}`],
-        };
-    }
-    return null;
-}
-
-export function writeWorksheetValidations(
-    worksheet: ExcelJS.Worksheet,
-    items: SpreadsheetValidationItem[] | undefined,
-) {
-    if (!items?.length) return;
-    const dv = (worksheet as { dataValidations?: { add: (ref: string, v: ExcelJS.DataValidation) => void } })
-        .dataValidations;
-    if (!dv?.add) return;
-    for (let i = 0; i < items.length; i += 1) {
-        const item = items[i];
-        for (let j = 0; j < item.refs.length; j += 1) {
-            const sheetRef = item.refs[j];
-            const excelDv = spreadsheetValidationToExcel(item, sheetRef);
-            if (!excelDv) continue;
-            dv.add(sheetRef, excelDv);
-        }
-    }
 }

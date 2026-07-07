@@ -44,15 +44,6 @@ function bytesToBase64(bytes: Uint8Array): string {
     return btoa(binary);
 }
 
-function base64ToBytes(base64: string): Uint8Array {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) {
-        bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes;
-}
-
 export function mediaToSheetImageData(media: ImageMedia): { extension: 'jpeg' | 'png' | 'gif'; base64: string } | null {
     if (media.base64) {
         const dataUrl = media.base64.match(/^data:image\/(\w+);base64,(.+)$/i);
@@ -168,34 +159,4 @@ export function buildExcelJsImageRange(anchor: SheetImageAnchor) {
         ext: { width: anchor.width ?? 64, height: anchor.height ?? 64 },
         ...(anchor.editAs ? { editAs: anchor.editAs } : {}),
     };
-}
-
-export function writeWorksheetImages(
-    worksheet: ExcelJS.Worksheet,
-    workbook: ExcelJS.Workbook,
-    images?: SheetImage[],
-    backgroundImage?: SheetBackgroundImage,
-) {
-    if (backgroundImage) {
-        const bgBuffer = base64ToBytes(backgroundImage.base64);
-        const bgId = workbook.addImage({
-            buffer: bgBuffer,
-            extension: backgroundImage.extension,
-        });
-        worksheet.addBackgroundImage(bgId);
-    }
-    if (!images?.length) return;
-    for (let i = 0; i < images.length; i += 1) {
-        const img = images[i];
-        const buffer = base64ToBytes(img.base64);
-        const imageId = workbook.addImage({
-            buffer,
-            extension: img.extension,
-        });
-        worksheet.addImage(imageId, buildExcelJsImageRange(img.anchor));
-    }
-}
-
-export function sheetImageDataUrl(image: Pick<SheetImage, 'extension' | 'base64'>): string {
-    return `data:image/${image.extension};base64,${image.base64}`;
 }
