@@ -55,20 +55,42 @@ export interface WorkbookDiff {
     dvRules: Record<string, UniverDvRule[]>;
     /** DV 相对 baseline 变更过的 sheetId */
     dvChangedSheetIds: string[];
+    /** 当前每 sheet 的条件格式规则（来自 snapshot resources，宽松形态） */
+    cfRules: Record<string, unknown[]>;
+    /** 条件格式相对 baseline 变更过的 sheetId */
+    cfChangedSheetIds: string[];
 }
 
 const DV_PLUGIN = 'SHEET_DATA_VALIDATION_PLUGIN';
+const CF_PLUGIN = 'SHEET_CONDITIONAL_FORMATTING_PLUGIN';
 
-function parseDvResource(wb: IWorkbookData): Record<string, UniverDvRule[]> {
+/** 解析 per-sheet 形态的插件资源（{ subUnitId: rules[] }） */
+function parsePerSheetResource<T>(wb: IWorkbookData, pluginName: string): Record<string, T[]> {
     const resources = (wb as { resources?: { name: string; data: string }[] }).resources ?? [];
-    const entry = resources.find(r => r.name === DV_PLUGIN);
+    const entry = resources.find(r => r.name === pluginName);
     if (!entry?.data) return {};
     try {
-        const parsed = JSON.parse(entry.data) as Record<string, UniverDvRule[]>;
+        const parsed = JSON.parse(entry.data) as Record<string, T[]>;
         return parsed && typeof parsed === 'object' ? parsed : {};
     } catch {
         return {};
     }
+}
+
+/** 对比 baseline / current 的 per-sheet 资源，返回变更过的 sheetId */
+function diffPerSheetResource<T>(
+    base: Record<string, T[]>,
+    cur: Record<string, T[]>,
+    validSheetIds: string[],
+): string[] {
+    const changed: string[] = [];
+    for (const sheetId of new Set([...Object.keys(base), ...Object.keys(cur)])) {
+        if (!validSheetIds.includes(sheetId)) continue;
+        if (stableStringify(base[sheetId] ?? []) !== stableStringify(cur[sheetId] ?? [])) {
+            changed.push(sheetId);
+        }
+    }
+    return changed;
 }
 
 const stableStringify = (value: unknown): string => {
@@ -258,19 +280,18 @@ export function diffWorkbook(
     const orderChanged = stableStringify(remainingBaseOrder) !== stableStringify(currentOldOrder)
         || current.sheetOrder.some((id, i) => !baseIds.has(id) && i !== current.sheetOrder.length - 1);
 
-    const baseDv = parseDvResource(baseline);
-    const curDv = parseDvResource(current);
-    const dvChangedSheetIds: string[] = [];
-    for (const sheetId of new Set([...Object.keys(baseDv), ...Object.keys(curDv)])) {
-        if (!current.sheetOrder.includes(sheetId)) continue;
-        if (stableStringify(baseDv[sheetId] ?? []) !== stableStringify(curDv[sheetId] ?? [])) {
-            dvChangedSheetIds.push(sheetId);
-        }
-    }
+    const curDv = parsePerSheetResource<UniverDvRule>(current, DV_PLUGIN);
+    const dvChangedSheetIds = diffPerSheetResource(
+        parsePerSheetResource<UniverDvRule>(baseline, DV_PLUGIN), curDv, current.sheetOrder);
+
+    const curCf = parsePerSheetResource<unknown>(current, CF_PLUGIN);
+    const cfChangedSheetIds = diffPerSheetResource(
+        parsePerSheetResource<unknown>(baseline, CF_PLUGIN), curCf, current.sheetOrder);
 
     const isEmpty = removedSheetIds.length === 0
         && !orderChanged
         && dvChangedSheetIds.length === 0
+        && cfChangedSheetIds.length === 0
         && sheets.every(s => s.status === 'incremental'
             && !s.renamed
             && !s.cellChanges.length
@@ -280,7 +301,11 @@ export function diffWorkbook(
             && !s.colChanges.length
             && !s.freezeChanged);
 
-    return { sheets, removedSheetIds, orderChanged, isEmpty, dvRules: curDv, dvChangedSheetIds };
+    return {
+        sheets, removedSheetIds, orderChanged, isEmpty,
+        dvRules: curDv, dvChangedSheetIds,
+        cfRules: curCf, cfChangedSheetIds,
+    };
 }
 
 /** 单工作簿的格式投影（样式/合并/冻结/行高列宽），用于「格式是否变更过」对比 */

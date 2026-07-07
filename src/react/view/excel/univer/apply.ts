@@ -10,6 +10,7 @@
 import type * as ExcelJS from '@cweijan/exceljs';
 import type { ICellData, IRange, IStyleData, IWorkbookData, IWorksheetData } from '@univerjs/core';
 import { applyUniverStyleToCell, univerRunStyleToExcelFont } from './export_styles';
+import { writeSheetConditionalFormattings, type UniverCfRule } from './cf';
 import type { CellChange, SheetDiff, UniverDvRule, WorkbookDiff } from './diff';
 
 const COL_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -287,14 +288,22 @@ export function applyDiffToWorkbook(
     }
 
     const dvChanged = new Set(diff.dvChangedSheetIds);
+    const cfChanged = new Set(diff.cfChangedSheetIds);
     for (const sheetDiff of diff.sheets) {
         const sheetData = current.sheets[sheetDiff.sheetId];
         const dvRules = diff.dvRules[sheetDiff.sheetId] ?? [];
-        if (sheetDiff.status === 'added') {
-            const ws = workbook.addWorksheet(sheetDiff.name || sheetDiff.sheetId);
+        const cfRules = (diff.cfRules[sheetDiff.sheetId] ?? []) as UniverCfRule[];
+
+        const writeRebuild = (name: string) => {
+            const ws = workbook.addWorksheet(name);
             writeFullSheet(ws, current, sheetData);
             writeSheetDataValidations(ws, dvRules);
+            writeSheetConditionalFormattings(ws, cfRules);
             sheetIdMap[sheetDiff.sheetId] = ws.id;
+        };
+
+        if (sheetDiff.status === 'added') {
+            writeRebuild(sheetDiff.name || sheetDiff.sheetId);
             continue;
         }
 
@@ -302,26 +311,23 @@ export function applyDiffToWorkbook(
         const worksheet = excelId != null ? workbook.getWorksheet(excelId) : undefined;
         if (!worksheet) {
             // 映射丢失（异常情况）：按新增处理，保证不丢数据
-            const ws = workbook.addWorksheet(sheetDiff.name || sheetDiff.sheetId);
-            writeFullSheet(ws, current, sheetData);
-            writeSheetDataValidations(ws, dvRules);
-            sheetIdMap[sheetDiff.sheetId] = ws.id;
+            writeRebuild(sheetDiff.name || sheetDiff.sheetId);
             continue;
         }
 
         if (sheetDiff.status === 'rebuilt') {
             workbook.removeWorksheet(worksheet.id);
-            const ws = workbook.addWorksheet(sheetDiff.name || sheetDiff.sheetId);
-            writeFullSheet(ws, current, sheetData);
-            writeSheetDataValidations(ws, dvRules);
-            sheetIdMap[sheetDiff.sheetId] = ws.id;
+            writeRebuild(sheetDiff.name || sheetDiff.sheetId);
             continue;
         }
 
         applyIncremental(worksheet, sheetDiff);
-        // DV 变更过的 sheet：以 Univer 当前规则覆盖式重写（未变更则保留原文件 DV）
+        // 资源类特性变更过的 sheet：以 Univer 当前规则覆盖式重写（未变更则保留原文件）
         if (dvChanged.has(sheetDiff.sheetId)) {
             writeSheetDataValidations(worksheet, dvRules);
+        }
+        if (cfChanged.has(sheetDiff.sheetId)) {
+            writeSheetConditionalFormattings(worksheet, cfRules);
         }
     }
 

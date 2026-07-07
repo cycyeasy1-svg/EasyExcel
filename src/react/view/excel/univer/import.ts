@@ -25,6 +25,7 @@ import { extractThemeXml, parseThemePalette, resolveExcelColor, type ExcelColorL
 import { readWorksheetValidations, type SpreadsheetValidationItem } from '../excel_validation';
 import { readWorksheetImages, type SheetImage } from '../excel_images';
 import { isWorksheetProtected } from '../excel_protection';
+import { CF_PLUGIN, excelCfToUniver, type UniverCfRule } from './cf';
 
 const DEFAULT_COL_WIDTH_PX = 88;
 const DEFAULT_ROW_HEIGHT_PX = 24;
@@ -433,6 +434,7 @@ export function convertExcelJsToUniver(workbook: ExcelJS.Workbook, name: string)
     const sheetOrder: string[] = [];
     const sheetIdMap: Record<string, number> = {};
     const sheetFeatures: Record<string, SheetFeatures> = {};
+    const cfMap: Record<string, UniverCfRule[]> = {};
     workbook.worksheets.forEach((worksheet, i) => {
         const sheetId = `sheet-${i + 1}`;
         sheets[sheetId] = convertWorksheet(worksheet, sheetId, palette, styleRegistry, hyperlinks);
@@ -443,7 +445,14 @@ export function convertExcelJsToUniver(workbook: ExcelJS.Workbook, name: string)
             images: safeRead(() => readWorksheetImages(worksheet, workbook), []),
             protected: safeRead(() => isWorksheetProtected(worksheet), false),
         };
+        const cfRules = safeRead(() => excelCfToUniver(worksheet, palette, sheetId), []);
+        if (cfRules.length) cfMap[sheetId] = cfRules;
     });
+
+    const resources: { name: string; data: string }[] = [];
+    if (Object.keys(cfMap).length) {
+        resources.push({ name: CF_PLUGIN, data: JSON.stringify(cfMap) });
+    }
 
     const workbookData = {
         id: 'workbook-1',
@@ -453,7 +462,7 @@ export function convertExcelJsToUniver(workbook: ExcelJS.Workbook, name: string)
         styles: styleRegistry.getStyles(),
         sheetOrder,
         sheets,
-        resources: [],
+        resources,
     } as unknown as IWorkbookData;
 
     return { workbookData, originalWorkbook: workbook, hyperlinks, sheetIdMap, sheetFeatures };

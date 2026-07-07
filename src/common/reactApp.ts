@@ -4,8 +4,6 @@ import { extensionResource, getExtensionUri, readExtensionText } from './extensi
 
 interface ViewOption {
     route: string;
-    /** webview 表格引擎（easyExcel.engine 配置） */
-    engine?: string;
 }
 
 export class ReactApp {

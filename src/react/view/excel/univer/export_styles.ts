@@ -11,7 +11,7 @@ import {
     type IBorderData,
     type IStyleData,
 } from '@univerjs/core';
-import { hexToArgb } from '../excel_styles';
+import { hexToArgb } from '../excel_styles_core';
 
 const BORDER_STYLE_REVERSE: Record<number, ExcelJS.BorderStyle> = {
     [BorderStyleTypes.THIN]: 'thin',
