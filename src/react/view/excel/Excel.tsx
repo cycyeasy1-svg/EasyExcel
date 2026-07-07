@@ -73,6 +73,7 @@ function ExcelViewer() {
     const csvDelimiterRef = useRef(',')
     const univerAdapterRef = useRef<UniverAdapter | null>(null)
     const univerViewUnbindRef = useRef<(() => void) | null>(null)
+    const univerRestrictUnbindRef = useRef<(() => void) | null>(null)
     const univerCtxRef = useRef<UniverSaveState | null>(null)
     const univerLossyWarnedRef = useRef(false)
     const darkRef = useRef(dark)
@@ -115,17 +116,20 @@ function ExcelViewer() {
         const ctx = univerCtxRef.current;
         if (!adapter || !ctx) return;
 
-        const { saveUniverWorkbook, hasFormattingChangedUniver } = await import('./univer/export');
+        const { saveUniverWorkbook, hasFormattingChangedUniver, XmlPatchBlockedError } = await import('./univer/export');
         const current = adapter.getWorkbookDataCopy() as IWorkbookData | null;
         if (!current) return;
 
         const targetExt = (options?.saveAs ? options.saveAsExt ?? 'xlsx' : extRef.current)
             .replace(/^\./, '').toLowerCase();
 
-        // 图表/透视表/宏安全网：ExcelJS 无法承载这些部件，保存会丢失，明示一次
+        // 图表/透视表/宏安全网：ExcelJS 重建路径（另存为副本）会丢失这些部件。
+        // M5 起保存回原文件走 XML 补丁，部件物理透传，无需警告。
+        const usesXmlPatch = !options?.saveAs && !!ctx.loadResult.originalBuffer
+            && (targetExt === 'xlsx' || targetExt === 'xlsm');
         const lossy = ctx.loadResult.lossy;
         const hasLossy = !!(lossy && (lossy.charts || lossy.pivotTables || lossy.vba));
-        if (hasLossy && (targetExt === 'xlsx' || targetExt === 'xlsm') && !univerLossyWarnedRef.current) {
+        if (hasLossy && !usesXmlPatch && (targetExt === 'xlsx' || targetExt === 'xlsm') && !univerLossyWarnedRef.current) {
             const proceed = await new Promise<boolean>((resolve) => {
                 modal.confirm({
                     title: t('viewer.lossyTitle'),
@@ -181,7 +185,7 @@ function ExcelViewer() {
             saveOptions?: { saveAs?: boolean; saveAsExt?: string },
         ) {
             try {
-                const { newSheetIdMap } = await saveUniverWorkbook(cur, {
+                const { newSheetIdMap, richTextDowngraded } = await saveUniverWorkbook(cur, {
                     ext: extRef.current.replace(/^\./, '').toLowerCase() || 'xlsx',
                     loadResult: saveCtx.loadResult,
                     baseline: saveCtx.baseline,
@@ -193,7 +197,15 @@ function ExcelViewer() {
                 if (newSheetIdMap) saveCtx.loadResult.sheetIdMap = newSheetIdMap;
                 saveCtx.baseline = cur;
                 saveCtx.session.reset();
+                if (richTextDowngraded) {
+                    message.info({ duration: 4, content: t('viewer.richTextDowngraded') });
+                }
             } catch (error) {
+                if (error instanceof XmlPatchBlockedError) {
+                    // 命令拦截失守（如粘贴带入合并）：拒绝保存并告知出路
+                    message.warning({ duration: 5, content: t('viewer.patchBlockedSave') });
+                    return;
+                }
                 console.error(`Failed to save Excel file: ${(error as Error).message}`, error);
                 message.error({ duration: 3, content: t('viewer.saveFailed') });
             }
@@ -228,6 +240,8 @@ function ExcelViewer() {
             const fileReadOnly = payload.readOnly === true;
             univerViewUnbindRef.current?.();
             univerViewUnbindRef.current = null;
+            univerRestrictUnbindRef.current?.();
+            univerRestrictUnbindRef.current = null;
             univerCtxRef.current?.session.stop();
             univerCtxRef.current = null;
             univerAdapterRef.current?.dispose();
@@ -279,6 +293,19 @@ function ExcelViewer() {
                 });
                 univerCtxRef.current = { loadResult: result, baseline, session };
             }
+
+            // M5：xlsx/xlsm 原文件的保存走 XML 补丁 → 无法无损写回的编辑
+            // （结构/合并/行高列宽/冻结/DV/CF）在命令层禁用，toast 引导去 Excel
+            const patchExt = /^\.?(xlsx|xlsm)$/i.test(payload.ext ?? '');
+            if (!fileReadOnly && patchExt && result.originalBuffer) {
+                let lastToastAt = 0;
+                univerRestrictUnbindRef.current = adapter.restrictLossyEdits(() => {
+                    const now = Date.now();
+                    if (now - lastToastAt < 2000) return;
+                    lastToastAt = now;
+                    message.warning({ duration: 4, content: t('viewer.structuralBlocked') });
+                });
+            }
         };
 
         handler.on("open", (payload) => {
@@ -308,6 +335,8 @@ function ExcelViewer() {
         return () => {
             univerViewUnbindRef.current?.();
             univerViewUnbindRef.current = null;
+            univerRestrictUnbindRef.current?.();
+            univerRestrictUnbindRef.current = null;
             univerCtxRef.current?.session.stop();
             univerCtxRef.current = null;
             univerAdapterRef.current?.dispose();

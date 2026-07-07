@@ -5,6 +5,12 @@ import { useEffect, useRef, useState } from 'react';
 import { UniverAdapter } from './adapter';
 import { loadForUniver, type UniverLoadResult } from './loader';
 
+const toBase64 = (bytes: Uint8Array): string => {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 1) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+};
+
 const demoLoadResult = (): UniverLoadResult => ({
     workbookData: {
         id: 'spike-workbook',
@@ -84,10 +90,20 @@ export default function UniverSpike() {
                 const diff = diffWorkbook(baseline as never, current, session.structuralSheetIds);
                 applyDiffToWorkbook(loadResult.originalWorkbook!, current, diff, { sheetIdMap: loadResult.sheetIdMap! });
                 const buffer = await loadResult.originalWorkbook!.xlsx.writeBuffer();
-                const bytes = new Uint8Array(buffer);
-                let bin = '';
-                for (let i = 0; i < bytes.length; i += 1) bin += String.fromCharCode(bytes[i]);
-                return btoa(bin);
+                return toBase64(new Uint8Array(buffer));
+            },
+            /** M5 保存链路（diff→XML 补丁字节），返回 base64（e2e 校验用） */
+            async savePatchProbe(): Promise<string> {
+                const [{ diffWorkbook }, { patchXlsxBytes }] = await Promise.all([
+                    import('./diff'),
+                    import('./xml_patch'),
+                ]);
+                const base = baseline as never as { sheetOrder: string[]; sheets: Record<string, { name?: string }> };
+                const current = adapter.getWorkbookDataCopy() as never;
+                const diff = diffWorkbook(baseline as never, current, session.structuralSheetIds);
+                const sheetNames = Object.fromEntries(base.sheetOrder.map(id => [id, base.sheets[id]?.name ?? '']));
+                const { bytes } = await patchXlsxBytes(loadResult.originalBuffer!, diff, sheetNames);
+                return toBase64(bytes);
             },
         };
         (window as never as Record<string, unknown>).__univerSpike = spike;

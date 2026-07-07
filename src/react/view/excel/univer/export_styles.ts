@@ -13,7 +13,8 @@ import {
 } from '@univerjs/core';
 import { hexToArgb } from '../excel_styles_core';
 
-const BORDER_STYLE_REVERSE: Record<number, ExcelJS.BorderStyle> = {
+/** BorderStyleTypes → OOXML/ExcelJS 边框样式 token（两者同名）；xml_patch 复用 */
+export const BORDER_STYLE_REVERSE: Record<number, ExcelJS.BorderStyle> = {
     [BorderStyleTypes.THIN]: 'thin',
     [BorderStyleTypes.HAIR]: 'hair',
     [BorderStyleTypes.DOTTED]: 'dotted',

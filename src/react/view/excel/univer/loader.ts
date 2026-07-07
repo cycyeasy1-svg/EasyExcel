@@ -13,6 +13,8 @@ import { sanitizeXlsxForExcelJs, type SanitizeResult } from './sanitize';
 
 export interface UniverLoadResult {
     workbookData: IWorkbookData;
+    /** xlsx/xlsm 才有：未经 sanitize 的真原始字节（M5 XML 补丁保存基底） */
+    originalBuffer?: ArrayBuffer;
     /** xlsx/xlsm 才有：原始 workbook（M2 增量导出基底）与超链接 */
     originalWorkbook?: UniverImportResult['originalWorkbook'];
     hyperlinks: UniverImportResult['hyperlinks'];
@@ -49,6 +51,7 @@ async function loadXlsx(buffer: ArrayBuffer, name: string): Promise<UniverLoadRe
     const result = convertExcelJsToUniver(workbook, name);
     return {
         workbookData: result.workbookData,
+        originalBuffer: buffer,
         originalWorkbook: result.originalWorkbook,
         hyperlinks: result.hyperlinks,
         sheetIdMap: result.sheetIdMap,

@@ -63,8 +63,44 @@ export interface UniverEditSession {
 }
 
 /** 行列插删/移动类 mutation：使该 sheet 的逐格 diff 失效（注意 Univer 的
- *  命名不对称：insert-row/remove-rows、insert-col/remove-col） */
+ *  命名不对称：insert-row/remove-rows、remove-col） */
 const STRUCTURAL_MUTATION = /^sheet\.mutation\.(insert-(row|col)|remove-(rows|col)|move-(rows|columns|range)|reorder-range)$/;
+
+/**
+ * M5：xlsx 原文件走 XML 补丁保存，以下操作无法无损写回 → 命令级拦截
+ * （BeforeCommandExecute 里 cancel，Univer 抛 CanceledError 中止命令与
+ * 其全部 mutation）。粘贴等直接派发 mutation 的路径拦不住，保存时由
+ * assertPatchableDiff 兜底拒绝。
+ *
+ * 覆盖：行列插删/移动/排序、范围插删平移、分列、sheet 增删/复制/重命名/
+ * 排序，以及初版一并禁用的行高列宽/隐藏、合并、冻结、DV、条件格式。
+ */
+const RESTRICTED_COMMAND = new RegExp(`^(?:${[
+    // 行列插删/移动/排序/分列（含 -confirm/-ctx/-before/-after 等变体）
+    'sheet\\.command\\.(?:insert|remove)-(?:row|col|multi-rows|multi-cols)[a-z-]*',
+    'sheet\\.command\\.append-row',
+    'sheet\\.command\\.move-(?:rows|cols|range)',
+    'sheet\\.command\\.reorder-range',
+    'sheet\\.command\\.sort-range[a-z-]*',
+    'sheet\\.command\\.split-text-to-columns',
+    // 范围插删（cell 平移）
+    'sheet\\.command\\.(?:insert|delete)-range-move-[a-z-]*',
+    // sheet 级结构
+    'sheet\\.command\\.(?:insert-sheet|remove-sheet|copy-sheet|set-worksheet-name|set-worksheet-order)[a-z-]*',
+    // 行高列宽/行列隐藏（二期再开）
+    'sheet\\.command\\.(?:set|delta)-(?:row-height|column-width)[a-z-]*',
+    'sheet\\.command\\.set-worksheet-(?:row-height|col-width)[a-z-]*',
+    'sheet\\.command\\.set-(?:row-is-auto-height|col-auto-width)',
+    'sheet\\.command\\.set-[a-z-]*(?:hidden|visible)',
+    'sheet\\.command\\.hide-(?:row|col)[a-z-]*',
+    // 合并/冻结（二期再开）
+    'sheet\\.command\\.(?:add|remove)-worksheet-merge[a-z-]*',
+    'sheet\\.command\\.[a-z-]*frozen[a-z-]*',
+    // 数据验证 / 条件格式（资源级重写只保留在另存为路径）
+    'sheet\\.command\\.addDataValidation',
+    '[a-z]+\\.command\\.[a-z-]*data-validation[a-z-]*',
+    'sheet\\.command\\.[a-z-]*conditional-rule[a-z-]*',
+].join('|')})$`);
 
 /** 应用超链接的上限，防止极端文件逐链接跑命令拖慢加载 */
 const MAX_APPLIED_HYPERLINKS = 2000;
@@ -267,6 +303,25 @@ export class UniverAdapter {
                 disposable.dispose();
             },
         };
+    }
+
+    /**
+     * M5：禁用无法无损保存的编辑（结构性操作 + DV/CF），命中时 cancel 命令
+     * 并回调 onBlocked（UI 弹「此操作请在 Excel 中进行」）。返回解绑函数。
+     * 仅对走 XML 补丁保存的文件（xlsx/xlsm 原文件编辑）调用。
+     */
+    restrictLossyEdits(onBlocked: (commandId: string) => void): () => void {
+        const api = this.univerAPI as never as {
+            addEvent(name: string, cb: (p: { id?: string; cancel?: boolean }) => void): { dispose(): void };
+            Event: Record<string, string>;
+        };
+        const disposable = api.addEvent(api.Event.BeforeCommandExecute, (e) => {
+            const id = e?.id ?? '';
+            if (!RESTRICTED_COMMAND.test(id)) return;
+            e.cancel = true;
+            onBlocked(id);
+        });
+        return () => disposable.dispose();
     }
 
     /** 选区/activeSheet 变化时回调（视图状态持久化用），返回解绑函数 */

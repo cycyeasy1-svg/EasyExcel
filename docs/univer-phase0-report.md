@@ -134,3 +134,19 @@ Gate 通过，建议进入 M1（只读预览）。体积与冷启动在预估区
 **最终已知边界**（长期记录）：图表/透视表/宏保存即丢（保存前警告；load 已修复为可打开）；行列插删的 sheet 整表重建（丢该 sheet 批注/CF）；受保护 sheet 的 unlocked 例外不支持；date 类 DV 导入不映射；工作表背景图不渲染。
 
 **遗留人工事项**：F5 手测清单（vscode-webview:// 下 chunk 加载/剪贴板/IME/Ctrl+S）——用户已初步确认"基本效果 OK"；发布前建议完整过一遍六格式打开/编辑/保存/另存清单。
+
+---
+
+# M5 完成记录（2026-07-07）— XML 级差分补丁（字节级无损保存）
+
+**验收结论：M5 全部达成。** `.xlsx`/`.xlsm` 保存回原文件不再经 ExcelJS 重建，改为在原始 zip 字节上做 XML 字符串手术 —— 除被改 sheet 的 XML（与必要时的 styles.xml 追加 / calcChain 删除 / calcPr 补丁）外，**其余所有部件逐字节与原文件一致**。图形（xdr:sp 文本框）、图表、透视表、宏、打印设置等 ExcelJS 未建模部件物理透传。
+
+- **核心模块 `univer/xml_patch.ts`**：cell 补丁（inlineStr 写字符串、不动 sharedStrings；数字/布尔/公式类型化写入；清空/新 cell/新 row 插入；只改值时原 `s=` 等属性原样保留）+ 样式 append-only（完整 IStyleData → 新 font/fill/border/numFmt/xf 追加到集合尾部，原索引零触碰，同样式去重；自定义 numFmt id 取 max+1≥164）。sheetId→部件路径经 workbook.xml 的 name（含 XML 转义）+ rels 解析，不靠顺序。
+- **公式重算**：有值变更且存在公式 → 删 calcChain.xml（连同 [Content_Types].xml Override 与 workbook rels 条目，避免悬空引用）+ calcPr 补 `fullCalcOnLoad="1"`，Excel 打开自动重算，杜绝陈旧缓存。
+- **结构操作禁用（方案 b，运行时已验证）**：`adapter.restrictLossyEdits()` 在 `BeforeCommandExecute` 里对结构命令 `cancel`（facade 抛 CanceledError 中止命令及全部 mutation）。覆盖：行列插删/移动/排序/分列、范围平移插删、sheet 增删/复制/重命名/排序、行高列宽/隐藏、合并、冻结、DV、条件格式。Playwright 实测 6 类命令全部拦截、普通编辑不受影响、无 mutation 漏网。粘贴等直发 mutation 的路径由保存时 `assertPatchableDiff` 兜底拒绝（`XmlPatchBlockedError` → 专属提示，绝不静默降级）。
+- **富文本降级**：富文本格的值编辑按纯文本 inlineStr 写入，保存后 toast 提示一次。
+- **另存为路径不变**（ExcelJS 重建导出副本，lossy 警告仅保留于此）；保存回原文件的图表/宏丢失警告已移除（部件现在存活）。补丁成功后 ExcelJS 模型同步推进，后续另存为包含全部编辑；originalBuffer 滚动更新，连续保存正确。
+- **测试**：14 项新单测（`univer-xmlpatch.test.ts`）——字节级部件 diff 断言（改 1 格只有对应 sheet XML 变化、零编辑全部件一致）、图表文件 chart1.xml 逐字节存活、值类型全覆盖（转义/空白保留/中文/布尔/公式/清空/新行）、样式 append-only（原 xf 片段全存活、同样式共 xf）、calcChain 清理三件套、openpyxl 产文件形态、防御性拒绝、转义 sheet 名解析。openpyxl 端独立验证通过（`test/output/m5_openpyxl_verify.py`）。合计 48 单测全绿。
+- fixtures：`make_m5_fixtures.py`（xlsxwriter 文本框 shape / openpyxl 形态 / 注入 calcChain 的 Excel 形态）。
+
+**M5 已知边界**：仅 `si`（共享公式引用）无 `f` 的 cell 按计算值写入（与 M2 相同）；粘贴带入的合并等无法 XML 补丁时保存被拒绝（提示撤销或去 Excel 改）；行高列宽/合并/冻结初版一并禁用（实现简单，二期视需求放开）；zip 容器层压缩字节可能与原文件不同（部件**内容**逐字节一致，承诺口径不变）。

@@ -13,6 +13,7 @@ import { handler } from '../../../util/vscode';
 import { CsvEncoding, encodeCsvText } from '../csvEncoding';
 import { diffWorkbook } from './diff';
 import { applyDiffToWorkbook, excelSerialToDate, writeFullSheet } from './apply';
+import { patchXlsxBytes, XmlPatchBlockedError } from './xml_patch';
 import type { UniverLoadResult } from './loader';
 
 export interface UniverSaveContext {
@@ -51,12 +52,17 @@ const isDateLikePattern = (pattern?: string | null): boolean => {
     return /[ymdhs]/i.test(stripped) && !/[#0?]/.test(stripped);
 };
 
+interface XlsxExportOutcome {
+    newSheetIdMap: Record<string, number>;
+    richTextDowngraded?: boolean;
+}
+
 async function exportXlsxIncremental(
     current: IWorkbookData,
     context: UniverSaveContext,
     options?: UniverSaveOptions,
-): Promise<Record<string, number>> {
-    const { originalWorkbook, sheetIdMap } = context.loadResult;
+): Promise<XlsxExportOutcome> {
+    const { originalWorkbook, sheetIdMap, originalBuffer } = context.loadResult;
     if (!originalWorkbook || !sheetIdMap) {
         // 非 xlsx 来源（csv/xls/ods 另存 xlsx）：从 snapshot 全量构建
         const workbook = new ExcelJS.Workbook();
@@ -69,14 +75,44 @@ async function exportXlsxIncremental(
         }
         const buffer = await workbook.xlsx.writeBuffer();
         emitBytes(new Uint8Array(buffer), options);
-        return newMap;
+        return { newSheetIdMap: newMap };
     }
 
     const diff = diffWorkbook(context.baseline, current, context.structuralSheetIds);
+
+    // M5：保存回原文件走 XML 补丁 —— 在原始字节上只改被编辑的 cell，
+    // 图形/图表/透视表/宏等 ExcelJS 未建模部件物理透传。另存为仍走 ExcelJS。
+    const docExt = context.ext.replace(/^\./, '').toLowerCase();
+    if (!options?.saveAs && originalBuffer && (docExt === 'xlsx' || docExt === 'xlsm')) {
+        let patched: Awaited<ReturnType<typeof patchXlsxBytes>> | null = null;
+        try {
+            const sheetNames = Object.fromEntries(
+                context.baseline.sheetOrder.map(id => [id, context.baseline.sheets[id]?.name ?? '']),
+            );
+            patched = await patchXlsxBytes(originalBuffer, diff, sheetNames);
+        } catch (error) {
+            // 结构性/DV/CF 变更：UI 已禁用，走到这里说明拦截失守 → 明确报错，
+            // 绝不悄悄降级到有损路径
+            if (error instanceof XmlPatchBlockedError) throw error;
+            // 补丁自身失败（异常 XML 形态等）：回退 M2 增量导出保住保存能力，
+            // 代价是 ExcelJS 未建模部件丢失 —— 大声记录
+            console.error('EasyExcel: xml patch failed, falling back to ExcelJS rewrite (unmodeled parts may be lost)', error);
+        }
+        if (patched) {
+            const { bytes, richTextDowngraded } = patched;
+            // ExcelJS 模型同步推进，保证后续「另存为」包含本次编辑
+            const newMap = applyDiffToWorkbook(originalWorkbook, current, diff, { sheetIdMap });
+            context.loadResult.originalBuffer = bytes.buffer.slice(
+                bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+            emitBytes(bytes, options);
+            return { newSheetIdMap: newMap, richTextDowngraded };
+        }
+    }
+
     const newMap = applyDiffToWorkbook(originalWorkbook, current, diff, { sheetIdMap });
     const buffer = await originalWorkbook.xlsx.writeBuffer();
     emitBytes(new Uint8Array(buffer), options);
-    return newMap;
+    return { newSheetIdMap: newMap };
 }
 
 /** snapshot → SheetJS worksheet（值/公式/合并/列宽，与 legacy 精度一致） */
@@ -136,17 +172,18 @@ function exportCsv(current: IWorkbookData, context: UniverSaveContext, fs: strin
 /**
  * 保存当前 workbook。返回值供调用方更新会话状态：
  * baseline 应更新为本次的 current，结构日志应清空，sheetIdMap 应替换。
+ * richTextDowngraded 为 true 时应提示用户（富文本格已按纯文本保存）。
+ * 不支持无损保存的变更（结构/DV/CF）抛 XmlPatchBlockedError。
  */
 export async function saveUniverWorkbook(
     current: IWorkbookData,
     context: UniverSaveContext,
     options?: UniverSaveOptions,
-): Promise<{ newSheetIdMap?: Record<string, number> }> {
+): Promise<{ newSheetIdMap?: Record<string, number>; richTextDowngraded?: boolean }> {
     const ext = (options?.saveAs ? options.saveAsExt ?? 'xlsx' : context.ext).replace(/^\./, '').toLowerCase();
 
     if (ext === 'xlsx' || ext === 'xlsm') {
-        const newSheetIdMap = await exportXlsxIncremental(current, context, options);
-        return { newSheetIdMap };
+        return exportXlsxIncremental(current, context, options);
     }
     if (ext === 'xls' || ext === 'ods') {
         exportSheetJs(current, ext as XLSX.BookType, options);
@@ -157,8 +194,8 @@ export async function saveUniverWorkbook(
         return {};
     }
     // 未知扩展名兜底走 xlsx
-    const newSheetIdMap = await exportXlsxIncremental(current, context, { ...options, saveAs: options?.saveAs, saveAsExt: 'xlsx' });
-    return { newSheetIdMap };
+    return exportXlsxIncremental(current, context, { ...options, saveAs: options?.saveAs, saveAsExt: 'xlsx' });
 }
 
 export { hasFormattingChangedUniver } from './diff';
+export { XmlPatchBlockedError } from './xml_patch';

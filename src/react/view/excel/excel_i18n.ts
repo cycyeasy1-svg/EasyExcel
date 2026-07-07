@@ -31,9 +31,12 @@ const en: Messages = {
     'viewer.zoomOut': 'Zoom out',
     'viewer.zoomIn': 'Zoom in',
     'viewer.lossyTitle': 'Some content cannot be preserved',
-    'viewer.lossyContent': 'This file contains charts, pivot tables or macros. Saving will drop them (the original file is untouched until you save).',
+    'viewer.lossyContent': 'This file contains charts, pivot tables or macros. Exporting a copy will drop them (the original file is untouched).',
     'viewer.lossySaveAnyway': 'Save anyway',
     'viewer.saveFailed': 'Save failed, see developer console',
+    'viewer.structuralBlocked': 'Please do this in Excel — structural changes (rows/columns/sheets, merges, sizes, freeze, validation, conditional formatting) are disabled so saving never alters untouched content',
+    'viewer.patchBlockedSave': 'This edit cannot be saved without altering untouched content. Undo it and retry, or make the change in Excel',
+    'viewer.richTextDowngraded': 'Rich-text cells were saved as plain text',
 };
 
 const zhCn: Messages = {
@@ -60,9 +63,12 @@ const zhCn: Messages = {
     'viewer.zoomOut': '缩小',
     'viewer.zoomIn': '放大',
     'viewer.lossyTitle': '部分内容无法保留',
-    'viewer.lossyContent': '此文件包含图表、透视表或宏。保存后这些内容将丢失（保存前原文件不受影响）。',
+    'viewer.lossyContent': '此文件包含图表、透视表或宏。导出的副本将丢失这些内容（原文件不受影响）。',
     'viewer.lossySaveAnyway': '仍要保存',
     'viewer.saveFailed': '保存失败，详见开发者工具控制台',
+    'viewer.structuralBlocked': '此操作请在 Excel 中进行 —— 为保证保存不改动未编辑的内容，插删行列/工作表、合并、行高列宽、冻结、数据验证、条件格式已禁用',
+    'viewer.patchBlockedSave': '本次编辑包含无法无损保存的修改，请撤销后重试，或在 Excel 中进行该修改',
+    'viewer.richTextDowngraded': '富文本单元格已按纯文本保存',
 };
 
 const zhTw: Messages = {
@@ -89,9 +95,12 @@ const zhTw: Messages = {
     'viewer.zoomOut': '縮小',
     'viewer.zoomIn': '放大',
     'viewer.lossyTitle': '部分內容無法保留',
-    'viewer.lossyContent': '此檔案包含圖表、樞紐分析表或巨集。儲存後這些內容將遺失（儲存前原始檔案不受影響）。',
+    'viewer.lossyContent': '此檔案包含圖表、樞紐分析表或巨集。匯出的副本將遺失這些內容（原始檔案不受影響）。',
     'viewer.lossySaveAnyway': '仍要儲存',
     'viewer.saveFailed': '儲存失敗，詳見開發者工具主控台',
+    'viewer.structuralBlocked': '此操作請在 Excel 中進行 —— 為確保儲存不更動未編輯的內容，插刪列欄/工作表、合併、列高欄寬、凍結、資料驗證、設定格式化的條件已停用',
+    'viewer.patchBlockedSave': '本次編輯包含無法無損儲存的修改，請復原後重試，或在 Excel 中進行該修改',
+    'viewer.richTextDowngraded': '富文字儲存格已以純文字儲存',
 };
 
 const TRADITIONAL_ZH = new Set(['zh-tw', 'zh-hk', 'zh-mo', 'zh-hant']);
