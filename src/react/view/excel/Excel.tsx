@@ -1,4 +1,4 @@
-import { MinusOutlined, MoonOutlined, PlusOutlined, SunOutlined } from "@ant-design/icons";
+import { ExportOutlined, MinusOutlined, MoonOutlined, PlusOutlined, SaveOutlined, SunOutlined } from "@ant-design/icons";
 import { App, Button, Modal, Radio, Spin } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { handler, loadDarkMode, applyDarkMode } from "../../util/vscode.ts";
@@ -330,6 +330,7 @@ function ExcelViewer() {
                 setLoading(false);
             });
         }).on("saveDone", () => {
+            message.success({ duration: 2, content: t('viewer.saved') });
         }).emit("init")
 
         return () => {
@@ -406,6 +407,26 @@ function ExcelViewer() {
             </Modal>
             <div id='container'></div>
             <div className="excel-footer-actions">
+                <div className="excel-zoom-control" aria-label={t('button.save')}>
+                    {!readOnly && (
+                        <button
+                            type="button"
+                            className="excel-zoom-button"
+                            title={`${t('button.save')} (Ctrl+S)`}
+                            onClick={() => void univerSave()}
+                        >
+                            <SaveOutlined />
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        className="excel-zoom-button"
+                        title={t('button.saveAs')}
+                        onClick={handleSaveAs}
+                    >
+                        <ExportOutlined />
+                    </button>
+                </div>
                 <div className="excel-zoom-control" aria-label={t('viewer.zoom')}>
                     <button
                         type="button"
