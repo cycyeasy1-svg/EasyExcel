@@ -99,7 +99,12 @@ async function exportXlsxIncremental(
             console.error('EasyExcel: xml patch failed, falling back to ExcelJS rewrite (unmodeled parts may be lost)', error);
         }
         if (patched) {
-            const { bytes, richTextDowngraded } = patched;
+            const { bytes, richTextDowngraded, changedParts, removedParts } = patched;
+            // 审计口径：本次保存实际触碰的部件清单（其余全部逐字节透传）
+            console.info(
+                `EasyExcel: patched save — rewritten: [${changedParts.join(', ') || 'none'}]`
+                + (removedParts.length ? `, removed: [${removedParts.join(', ')}]` : '')
+                + '; all other parts byte-identical');
             // ExcelJS 模型同步推进，保证后续「另存为」包含本次编辑
             const newMap = applyDiffToWorkbook(originalWorkbook, current, diff, { sheetIdMap });
             context.loadResult.originalBuffer = bytes.buffer.slice(

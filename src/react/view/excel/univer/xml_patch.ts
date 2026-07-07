@@ -39,6 +39,10 @@ export interface XmlPatchResult {
     bytes: Uint8Array;
     /** 有富文本单元格的值被降级为纯文本写入 */
     richTextDowngraded: boolean;
+    /** 本次实际改写的部件（审计用：除此之外全部逐字节透传） */
+    changedParts: string[];
+    /** 本次删除的部件（calcChain） */
+    removedParts: string[];
 }
 
 /** diff 是否只含 XML 补丁能承载的变更；不能则抛 XmlPatchBlockedError */
@@ -753,6 +757,13 @@ export async function patchXlsxBytes(
     let richTextDowngraded = false;
     let formulaTouched = false;
     let anyValueChanged = false;
+    const changedParts: string[] = [];
+    const removedParts: string[] = [];
+    const writePart = (name: string, content: string) => {
+        // createFolders:false —— 不新增原文件没有的目录条目（审计干净）
+        zip.file(name, content, { createFolders: false });
+        changedParts.push(name);
+    };
 
     for (const sheetDiff of diff.sheets) {
         if (!sheetDiff.cellChanges.length) continue;
@@ -766,11 +777,11 @@ export async function patchXlsxBytes(
         richTextDowngraded ||= outcome.richTextDowngraded;
         formulaTouched ||= outcome.formulaTouched || sheetXml.includes('<f>') || sheetXml.includes('<f ');
         anyValueChanged ||= sheetDiff.cellChanges.some(c => c.valueChanged);
-        if (outcome.xml !== sheetXml) zip.file(partPath, outcome.xml);
+        if (outcome.xml !== sheetXml) writePart(partPath, outcome.xml);
     }
 
     if (stylesPatcher.touched) {
-        zip.file('xl/styles.xml', stylesPatcher.serialize());
+        writePart('xl/styles.xml', stylesPatcher.serialize());
     }
 
     // 公式缓存可能陈旧：删 calcChain（Excel 自动重建）+ fullCalcOnLoad 强制重算
@@ -778,14 +789,15 @@ export async function patchXlsxBytes(
     if (anyValueChanged && (hasCalcChain || formulaTouched)) {
         if (hasCalcChain) {
             zip.remove('xl/calcChain.xml');
+            removedParts.push('xl/calcChain.xml');
             const contentTypes = await readPart('[Content_Types].xml');
             const cleanedTypes = contentTypes.replace(/<Override[^>]*PartName="\/xl\/calcChain\.xml"[^>]*\/>/, '');
-            if (cleanedTypes !== contentTypes) zip.file('[Content_Types].xml', cleanedTypes);
+            if (cleanedTypes !== contentTypes) writePart('[Content_Types].xml', cleanedTypes);
             const cleanedRels = relsXml.replace(/<Relationship\b[^>]*Target="calcChain\.xml"[^>]*\/>/, '');
-            if (cleanedRels !== relsXml) zip.file('xl/_rels/workbook.xml.rels', cleanedRels);
+            if (cleanedRels !== relsXml) writePart('xl/_rels/workbook.xml.rels', cleanedRels);
         }
         const patchedWorkbook = patchCalcPr(workbookXml);
-        if (patchedWorkbook !== workbookXml) zip.file('xl/workbook.xml', patchedWorkbook);
+        if (patchedWorkbook !== workbookXml) writePart('xl/workbook.xml', patchedWorkbook);
     }
 
     const bytes = await zip.generateAsync({
@@ -793,5 +805,5 @@ export async function patchXlsxBytes(
         compression: 'DEFLATE',
         compressionOptions: { level: 6 },
     });
-    return { bytes, richTextDowngraded };
+    return { bytes, richTextDowngraded, changedParts: changedParts.sort(), removedParts };
 }

@@ -77,7 +77,7 @@ const reopen = async (bytes: Uint8Array) => {
 
 describe('M5 byte-level pass-through', () => {
   it('edit one cell: only that sheet XML changes, shape drawing survives byte-identical', async () => {
-    const { parts, bytes } = await patchEdit('m5-shapes.xlsx', (cur) => {
+    const { parts, bytes, changedParts, removedParts } = await patchEdit('m5-shapes.xlsx', (cur) => {
       const cells = cellsOf(cur);
       cells[1][0] = { ...cells[1][0], v: 'CHANGED' };
     });
@@ -85,6 +85,9 @@ describe('M5 byte-level pass-through', () => {
     expect(parts.changed).toEqual(['xl/worksheets/sheet1.xml']);
     expect(parts.added).toEqual([]);
     expect(parts.removed).toEqual([]);
+    // 审计清单与真实 zip 级 diff 一致（保存日志的可信度来源）
+    expect(changedParts).toEqual(parts.changed);
+    expect(removedParts).toEqual(parts.removed);
 
     const sheetXml = await readPart(bytes, 'xl/worksheets/sheet1.xml');
     expect(sheetXml).toContain('t="inlineStr"');
@@ -101,10 +104,12 @@ describe('M5 byte-level pass-through', () => {
   });
 
   it('zero-edit save leaves every part byte-identical', async () => {
-    const { parts } = await patchEdit('m5-shapes.xlsx', () => { });
+    const { parts, changedParts, removedParts } = await patchEdit('m5-shapes.xlsx', () => { });
     expect(parts.changed).toEqual([]);
     expect(parts.added).toEqual([]);
     expect(parts.removed).toEqual([]);
+    expect(changedParts).toEqual([]);
+    expect(removedParts).toEqual([]);
   });
 
   it('chart file: chart XML byte-identical after cell edit (M2 dropped it)', async () => {
@@ -235,11 +240,13 @@ describe('M5 style patch (append-only)', () => {
 
 describe('M5 calcChain & recalc', () => {
   it('drops calcChain (with content-types/rels cleanup) and forces full recalc', async () => {
-    const { parts, bytes } = await patchEdit('m5-calcchain.xlsx', (cur) => {
+    const { parts, bytes, changedParts, removedParts } = await patchEdit('m5-calcchain.xlsx', (cur) => {
       const cells = cellsOf(cur);
       cells[1][1] = { ...cells[1][1], v: 999 }; // B2：被 B4 公式引用
     });
     expect(parts.removed).toEqual(['xl/calcChain.xml']);
+    expect(removedParts).toEqual(['xl/calcChain.xml']);
+    expect(changedParts).toEqual(parts.changed);
     expect(await readPart(bytes, '[Content_Types].xml')).not.toContain('calcChain');
     expect(await readPart(bytes, 'xl/_rels/workbook.xml.rels')).not.toContain('calcChain');
     expect(await readPart(bytes, 'xl/workbook.xml')).toMatch(/<calcPr[^>]*fullCalcOnLoad="1"/);
