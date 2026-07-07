@@ -7,6 +7,10 @@
 	"author": "Easy Chen",
 	"icon": "image/logo.png",
 	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/cycyeasy1-svg/EasyExcel.git"
+	},
 	"engines": {
 		"vscode": "^1.64.0"
 	},
