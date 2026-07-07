@@ -118,3 +118,19 @@ Gate 通过，建议进入 M1（只读预览）。体积与冷启动在预估区
 **M3 已知边界**：date 类型 DV 导入暂不映射（未编辑时导出仍保留原文件规则）；受保护 sheet 的 unlocked 例外不支持；工具栏"保存"按钮无（Ctrl+S / 另存对话框可用）；Univer 内对图片的编辑不纳入导出。
 
 **M4 待办**：条件格式编辑写回、富文本编辑完整往返、100k 行性能基准、结构变更 mutation 重放（消除 rebuilt 降级）、删除 x-spreadsheet（103 文件）与 legacy 开关、F5 手测清单执行。
+
+---
+
+# M4 完成记录（2026-07-07，commit fba39cc）— 迁移收官
+
+**Univer 现在是唯一引擎。** vendored x-spreadsheet（100+ 文件 ~1.2 万行）、FindReplacePanel、excel_find/reader/writer/styles/hyperlink/meta/theme 已全部删除；`easyExcel.engine` 设置项移除；excel_i18n 重写为独立模块（en/zh-CN/zh-TW，其余回退 en，引擎内文案由 Univer locale 覆盖）。
+
+- **条件格式闭环**：`univer/cf.ts` 双向映射（cellIs/含文本系/expression/重复唯一值/colorScale/dataBar）——导入进 CF 资源并渲染，导出走资源 diff：变更的 sheet 重写、未变更的保留原文件规则原样。
+- **结构重放方案否决**（spike 实证）：ExcelJS `spliceRows` 会**丢批注、不平移 CF 范围**——重放会产出静默错位的文件，比"明确重建丢失"更糟。维持 rebuild 兜底，此为 ExcelJS 能力边界所致的最终结论。
+- **100k 行基准**（100 万格 / 6MB xlsx，Playwright headless）：打开 ~5s、单元格编辑 55ms、跳滚 90000 行 15ms、单格变更保存（全量 diff+apply+writeBuffer）4.6s、堆 631MB、零错误。
+- **体积收官数字**：主包 316KB gzip（迁移前 639KB，**减半**）；Univer 懒加载 chunk 1,671KB gzip；CSS 44KB（原 92KB）。
+- 测试：34 单测 + e2e 冒烟无回归。
+
+**最终已知边界**（长期记录）：图表/透视表/宏保存即丢（保存前警告；load 已修复为可打开）；行列插删的 sheet 整表重建（丢该 sheet 批注/CF）；受保护 sheet 的 unlocked 例外不支持；date 类 DV 导入不映射；工作表背景图不渲染。
+
+**遗留人工事项**：F5 手测清单（vscode-webview:// 下 chunk 加载/剪贴板/IME/Ctrl+S）——用户已初步确认"基本效果 OK"；发布前建议完整过一遍六格式打开/编辑/保存/另存清单。
