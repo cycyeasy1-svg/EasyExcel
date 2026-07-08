@@ -1,4 +1,4 @@
-import { basename, join, parse } from 'path';
+import { join, parse } from 'path';
 import * as vscode from 'vscode';
 import { Handler } from '@/common/handler';
 import { isUriReadOnly } from '@/common/fileReadOnly';

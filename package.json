@@ -29,10 +29,34 @@
 		"Other"
 	],
 	"activationEvents": [
-		"onCustomEditor:easychen.easyExcel"
+		"onCustomEditor:easychen.easyExcel",
+		"onCommand:easyexcel.openDiff"
 	],
 	"main": "./out/extension.js",
 	"contributes": {
+		"commands": [
+			{
+				"command": "easyexcel.openDiff",
+				"title": "Open Excel Diff",
+				"category": "EasyExcel"
+			}
+		],
+		"menus": {
+			"scm/resourceState/context": [
+				{
+					"command": "easyexcel.openDiff",
+					"when": "scmProvider == git && (resourceExtname == .xls || resourceExtname == .xlsx || resourceExtname == .xlsm || resourceExtname == .csv || resourceExtname == .tsv || resourceExtname == .ods)",
+					"group": "navigation"
+				}
+			],
+			"explorer/context": [
+				{
+					"command": "easyexcel.openDiff",
+					"when": "resourceExtname == .xls || resourceExtname == .xlsx || resourceExtname == .xlsm || resourceExtname == .csv || resourceExtname == .tsv || resourceExtname == .ods",
+					"group": "navigation"
+				}
+			]
+		},
 		"customEditors": [
 			{
 				"viewType": "easychen.easyExcel",
