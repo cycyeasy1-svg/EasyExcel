@@ -1,12 +1,11 @@
-import { ExportOutlined, MinusOutlined, MoonOutlined, PlusOutlined, SaveOutlined, SunOutlined } from "@ant-design/icons";
-import { App, Button, Modal, Radio, Spin } from "antd";
+import { ExportOutlined, MoonOutlined, SaveOutlined, SunOutlined, TranslationOutlined } from "@ant-design/icons";
+import { App, Button, Dropdown, Modal, Radio, Spin } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { handler, loadDarkMode, applyDarkMode } from "../../util/vscode.ts";
+import { handler, loadDarkMode, applyDarkMode, loadLanguage, applyLanguage } from "../../util/vscode.ts";
 import { loadWorkbookBuffer } from "../../util/loadWorkbookContent.ts";
 import './Excel.less';
 import { detectCsvEncoding } from "./csvEncoding.ts";
-import { initExcelLocale, t } from './excel_i18n';
-import { getConfigs } from '../../util/vscodeConfig.ts';
+import { initExcelLocale, setExcelLocale, t } from './excel_i18n';
 import type { UniverAdapter, UniverEditSession } from './univer/adapter';
 import type { UniverLoadResult } from './univer/loader';
 import type { IWorkbookData } from '@univerjs/core';
@@ -16,20 +15,19 @@ initExcelLocale();
 type ExcelViewState = { ri: number; ci: number; sheetIndex: number };
 
 const EXCEL_VIEW_STATE_SUFFIX = '-excel-view';
-const DEFAULT_ZOOM_PERCENT = 100;
-const ZOOM_OPTIONS = [50, 75, 90, 100, 125, 150, 200];
+
+/** 界面语言选项（打包了 zh-CN / en-US / ja-JP 三套 Univer locale） */
+const LANGUAGE_OPTIONS = [
+    { key: 'zh-cn', label: '简体中文' },
+    { key: 'en', label: 'English' },
+    { key: 'ja', label: '日本語' },
+];
 
 /** Univer 编辑会话的保存上下文（initUniver 组装，保存后就地更新） */
 interface UniverSaveState {
     loadResult: UniverLoadResult;
     baseline: IWorkbookData;
     session: UniverEditSession;
-}
-
-function clampZoomPercent(value: number): number {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return DEFAULT_ZOOM_PERCENT;
-    return Math.min(Math.max(Math.round(n), ZOOM_OPTIONS[0]), ZOOM_OPTIONS[ZOOM_OPTIONS.length - 1]);
 }
 
 function getViewStateKey(documentCacheId: string): string {
@@ -64,11 +62,11 @@ function ExcelViewer() {
     const [loadError, setLoadError] = useState<string | null>(null)
     const [saveAsVisible, setSaveAsVisible] = useState(false)
     const [saveAsFormat, setSaveAsFormat] = useState('xlsx')
-    const [zoomPercent, setZoomPercent] = useState(DEFAULT_ZOOM_PERCENT)
+    const [language, setLanguage] = useState(loadLanguage)
     const extRef = useRef('')
     const documentCacheIdRef = useRef('')
     const readOnlyRef = useRef(false)
-    const zoomPercentRef = useRef(DEFAULT_ZOOM_PERCENT)
+    const dirtyRef = useRef(false)
     const csvEncodingRef = useRef<'utf8' | 'gbk'>('utf8')
     const csvDelimiterRef = useRef(',')
     const univerAdapterRef = useRef<UniverAdapter | null>(null)
@@ -96,29 +94,42 @@ function ExcelViewer() {
         setSaveAsVisible(true);
     }, []);
 
-    const applyZoomPercent = useCallback((value: number) => {
-        const next = clampZoomPercent(value);
-        zoomPercentRef.current = next;
-        setZoomPercent(next);
-        univerAdapterRef.current?.setZoom(next / 100);
-    }, []);
+    // 切换语言：外壳文案即时生效；Univer locale 只能在创建时指定，
+    // 让宿主重发文件内容（init → open）以新语言重建实例
+    const switchLanguage = useCallback(async (next: string) => {
+        if (next === loadLanguage()) return;
+        if (dirtyRef.current) {
+            const proceed = await new Promise<boolean>((resolve) => {
+                modal.confirm({
+                    title: t('viewer.langSwitchTitle'),
+                    content: t('viewer.langSwitchContent'),
+                    okText: t('viewer.langSwitchAnyway'),
+                    cancelText: t('button.cancel'),
+                    centered: true,
+                    getContainer: () => document.body,
+                    onOk: () => resolve(true),
+                    onCancel: () => resolve(false),
+                });
+            });
+            if (!proceed) return;
+        }
+        applyLanguage(next);
+        setExcelLocale(next);
+        setLanguage(next);
+        setLoading(true);
+        handler.emit('init');
+    }, [modal]);
 
-    const stepZoom = useCallback((direction: -1 | 1) => {
-        const current = zoomPercentRef.current;
-        const next = direction < 0
-            ? [...ZOOM_OPTIONS].reverse().find(value => value < current) ?? ZOOM_OPTIONS[0]
-            : ZOOM_OPTIONS.find(value => value > current) ?? ZOOM_OPTIONS[ZOOM_OPTIONS.length - 1];
-        applyZoomPercent(next);
-    }, [applyZoomPercent]);
-
-    const univerSave = useCallback(async (options?: { saveAs?: boolean; saveAsExt?: string }) => {
+    // 返回是否已把字节派发给宿主写盘（true=保存流程进入写盘阶段；
+    // false=用户取消/无法保存）。宿主 requestSave 桥据此决定原生 dirty 去留。
+    const univerSave = useCallback(async (options?: { saveAs?: boolean; saveAsExt?: string }): Promise<boolean> => {
         const adapter = univerAdapterRef.current;
         const ctx = univerCtxRef.current;
-        if (!adapter || !ctx) return;
+        if (!adapter || !ctx) return false;
 
         const { saveUniverWorkbook, hasFormattingChangedUniver, XmlPatchBlockedError } = await import('./univer/export');
         const current = adapter.getWorkbookDataCopy() as IWorkbookData | null;
-        if (!current) return;
+        if (!current) return false;
 
         const targetExt = (options?.saveAs ? options.saveAsExt ?? 'xlsx' : extRef.current)
             .replace(/^\./, '').toLowerCase();
@@ -142,7 +153,7 @@ function ExcelViewer() {
                     onCancel: () => resolve(false),
                 });
             });
-            if (!proceed) return;
+            if (!proceed) return false;
             univerLossyWarnedRef.current = true;
         }
 
@@ -170,20 +181,19 @@ function ExcelViewer() {
                     ),
                 });
             });
-            if (choice === 'cancel') return;
+            if (choice === 'cancel') return false;
             if (choice === 'xlsx') {
-                await univerSaveInner(current, ctx, { saveAs: true, saveAsExt: 'xlsx' });
-                return;
+                return await univerSaveInner(current, ctx, { saveAs: true, saveAsExt: 'xlsx' });
             }
         }
 
-        await univerSaveInner(current, ctx, options);
+        return await univerSaveInner(current, ctx, options);
 
         async function univerSaveInner(
             cur: IWorkbookData,
             saveCtx: UniverSaveState,
             saveOptions?: { saveAs?: boolean; saveAsExt?: string },
-        ) {
+        ): Promise<boolean> {
             try {
                 const { newSheetIdMap, richTextDowngraded } = await saveUniverWorkbook(cur, {
                     ext: extRef.current.replace(/^\./, '').toLowerCase() || 'xlsx',
@@ -197,17 +207,20 @@ function ExcelViewer() {
                 if (newSheetIdMap) saveCtx.loadResult.sheetIdMap = newSheetIdMap;
                 saveCtx.baseline = cur;
                 saveCtx.session.reset();
+                dirtyRef.current = false;
                 if (richTextDowngraded) {
                     message.info({ duration: 4, content: t('viewer.richTextDowngraded') });
                 }
+                return true;
             } catch (error) {
                 if (error instanceof XmlPatchBlockedError) {
                     // 命令拦截失守（如粘贴带入合并）：拒绝保存并告知出路
                     message.warning({ duration: 5, content: t('viewer.patchBlockedSave') });
-                    return;
+                    return false;
                 }
                 console.error(`Failed to save Excel file: ${(error as Error).message}`, error);
                 message.error({ duration: 3, content: t('viewer.saveFailed') });
+                return false;
             }
         }
     }, [modal, message]);
@@ -225,13 +238,25 @@ function ExcelViewer() {
                 if (readOnlyRef.current) {
                     void handleSaveAs();
                 } else {
-                    void univerSave();
+                    // 交由 VSCode 发起保存 → saveCustomDocument → requestSave，
+                    // 写盘后原生 dirty 状态才会正确清除
+                    handler.emit('hostSave');
                 }
             }
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [handleSaveAs, univerSave]);
+    }, [handleSaveAs]);
+
+    // 宿主（saveCustomDocument）请求保存：跑既有保存流程，未真正写盘则回报取消
+    useEffect(() => {
+        handler.on('requestSave', () => {
+            void (async () => {
+                const dispatched = readOnlyRef.current ? false : await univerSave();
+                if (!dispatched) handler.emit('saveSettled', { cancelled: true });
+            })();
+        });
+    }, [univerSave]);
 
     useEffect(() => {
         const container = document.getElementById('container');
@@ -247,6 +272,7 @@ function ExcelViewer() {
             univerAdapterRef.current?.dispose();
             univerAdapterRef.current = null;
             univerLossyWarnedRef.current = false;
+            dirtyRef.current = false;
             container.innerHTML = '';
             container.style.height = '100vh';
 
@@ -264,7 +290,7 @@ function ExcelViewer() {
             }
             const adapter = UniverAdapter.create(container, {
                 darkMode: darkRef.current,
-                language: getConfigs()?.language,
+                language: loadLanguage(),
                 readOnly: fileReadOnly,
             });
             univerAdapterRef.current = adapter;
@@ -273,9 +299,6 @@ function ExcelViewer() {
                 readOnly: fileReadOnly,
                 onOpenExternal: (url) => handler.emit('openExternal', url),
             });
-            if (zoomPercentRef.current !== DEFAULT_ZOOM_PERCENT) {
-                adapter.setZoom(zoomPercentRef.current / 100);
-            }
             const savedView = loadViewState(documentCacheIdRef.current);
             if (savedView) {
                 adapter.restoreViewState(savedView);
@@ -288,8 +311,24 @@ function ExcelViewer() {
             // 基线必须在超链接/特性应用与视图恢复之后取（此后的 mutation 才算用户编辑）
             const baseline = adapter.getWorkbookDataCopy() as IWorkbookData | null;
             if (baseline) {
+                // 仅当相对基线真正产生内容/格式差异时才标记「已变更」。
+                // 仅点选、进入/退出编辑但未改动内容不会触发星号。已 dirty 后
+                // 不再重复比对（省开销；保存/重载后基线与 dirtyRef 会一并复位）。
                 const session = adapter.startEditSession(() => {
-                    if (!fileReadOnly) handler.emit('change');
+                    if (dirtyRef.current || fileReadOnly) return;
+                    void (async () => {
+                        // 对比「最近一次保存后的基线」（保存会把 ctx.baseline 推进到
+                        // 已存状态并 reset 结构日志），而非初始加载基线
+                        const ctx = univerCtxRef.current;
+                        if (!ctx || dirtyRef.current) return;
+                        const cur = adapter.getWorkbookDataCopy() as IWorkbookData | null;
+                        if (!cur || dirtyRef.current) return;
+                        const { diffWorkbook } = await import('./univer/diff');
+                        if (dirtyRef.current) return;
+                        if (diffWorkbook(ctx.baseline, cur, ctx.session.structuralSheetIds).isEmpty) return;
+                        dirtyRef.current = true;
+                        handler.emit('change');
+                    })();
                 });
                 univerCtxRef.current = { loadResult: result, baseline, session };
             }
@@ -406,57 +445,45 @@ function ExcelViewer() {
                 </div>
             </Modal>
             <div id='container'></div>
-            <div className="excel-footer-actions">
-                <div className="excel-zoom-control" aria-label={t('button.save')}>
+            <div className="excel-topbar-actions">
+                <div className="excel-action-group">
                     {!readOnly && (
                         <button
                             type="button"
-                            className="excel-zoom-button"
+                            className="excel-action-button"
                             title={`${t('button.save')} (Ctrl+S)`}
-                            onClick={() => void univerSave()}
+                            onClick={() => handler.emit('hostSave')}
                         >
                             <SaveOutlined />
                         </button>
                     )}
                     <button
                         type="button"
-                        className="excel-zoom-button"
+                        className="excel-action-button"
                         title={t('button.saveAs')}
                         onClick={handleSaveAs}
                     >
                         <ExportOutlined />
                     </button>
                 </div>
-                <div className="excel-zoom-control" aria-label={t('viewer.zoom')}>
+                <Dropdown
+                    trigger={['click']}
+                    menu={{
+                        items: LANGUAGE_OPTIONS,
+                        selectable: true,
+                        selectedKeys: [language],
+                        onClick: ({ key }) => void switchLanguage(key),
+                    }}
+                    getPopupContainer={() => document.body}
+                >
                     <button
                         type="button"
-                        className="excel-zoom-button"
-                        title={t('viewer.zoomOut')}
-                        onClick={() => stepZoom(-1)}
-                        disabled={zoomPercent <= ZOOM_OPTIONS[0]}
+                        className="dark-mode-toggle"
+                        title={t('viewer.language')}
                     >
-                        <MinusOutlined />
+                        <TranslationOutlined />
                     </button>
-                    <select
-                        className="excel-zoom-select"
-                        value={zoomPercent}
-                        title={t('viewer.zoom')}
-                        onChange={event => applyZoomPercent(Number(event.target.value))}
-                    >
-                        {ZOOM_OPTIONS.map(value => (
-                            <option key={value} value={value}>{value}%</option>
-                        ))}
-                    </select>
-                    <button
-                        type="button"
-                        className="excel-zoom-button"
-                        title={t('viewer.zoomIn')}
-                        onClick={() => stepZoom(1)}
-                        disabled={zoomPercent >= ZOOM_OPTIONS[ZOOM_OPTIONS.length - 1]}
-                    >
-                        <PlusOutlined />
-                    </button>
-                </div>
+                </Dropdown>
                 <button
                     type="button"
                     className="dark-mode-toggle"

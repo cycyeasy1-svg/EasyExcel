@@ -14,20 +14,28 @@ import { UniverSheetsDrawingPreset } from '@univerjs/presets/preset-sheets-drawi
 import { UniverSheetsConditionalFormattingPreset } from '@univerjs/presets/preset-sheets-conditional-formatting';
 import CoreZhCN from '@univerjs/preset-sheets-core/locales/zh-CN';
 import CoreEnUS from '@univerjs/preset-sheets-core/locales/en-US';
+import CoreJaJP from '@univerjs/preset-sheets-core/locales/ja-JP';
 import FilterZhCN from '@univerjs/preset-sheets-filter/locales/zh-CN';
 import FilterEnUS from '@univerjs/preset-sheets-filter/locales/en-US';
+import FilterJaJP from '@univerjs/preset-sheets-filter/locales/ja-JP';
 import SortZhCN from '@univerjs/preset-sheets-sort/locales/zh-CN';
 import SortEnUS from '@univerjs/preset-sheets-sort/locales/en-US';
+import SortJaJP from '@univerjs/preset-sheets-sort/locales/ja-JP';
 import FindReplaceZhCN from '@univerjs/preset-sheets-find-replace/locales/zh-CN';
 import FindReplaceEnUS from '@univerjs/preset-sheets-find-replace/locales/en-US';
+import FindReplaceJaJP from '@univerjs/preset-sheets-find-replace/locales/ja-JP';
 import DataValidationZhCN from '@univerjs/preset-sheets-data-validation/locales/zh-CN';
 import DataValidationEnUS from '@univerjs/preset-sheets-data-validation/locales/en-US';
+import DataValidationJaJP from '@univerjs/preset-sheets-data-validation/locales/ja-JP';
 import HyperLinkZhCN from '@univerjs/preset-sheets-hyper-link/locales/zh-CN';
 import HyperLinkEnUS from '@univerjs/preset-sheets-hyper-link/locales/en-US';
+import HyperLinkJaJP from '@univerjs/preset-sheets-hyper-link/locales/ja-JP';
 import DrawingZhCN from '@univerjs/preset-sheets-drawing/locales/zh-CN';
 import DrawingEnUS from '@univerjs/preset-sheets-drawing/locales/en-US';
+import DrawingJaJP from '@univerjs/preset-sheets-drawing/locales/ja-JP';
 import CfZhCN from '@univerjs/preset-sheets-conditional-formatting/locales/zh-CN';
 import CfEnUS from '@univerjs/preset-sheets-conditional-formatting/locales/en-US';
+import CfJaJP from '@univerjs/preset-sheets-conditional-formatting/locales/ja-JP';
 
 import '@univerjs/presets/lib/styles/preset-sheets-core.css';
 import '@univerjs/presets/lib/styles/preset-sheets-filter.css';
@@ -107,8 +115,12 @@ const MAX_APPLIED_HYPERLINKS = 2000;
 
 type FUniverLike = ReturnType<typeof createUniver>['univerAPI'];
 
-const pickLocale = (language?: string) =>
-    /^zh/i.test(language ?? '') ? LocaleType.ZH_CN : LocaleType.EN_US;
+const pickLocale = (language?: string) => {
+    const lang = language ?? '';
+    if (/^zh/i.test(lang)) return LocaleType.ZH_CN;
+    if (/^ja/i.test(lang)) return LocaleType.JA_JP;
+    return LocaleType.EN_US;
+};
 
 export class UniverAdapter {
     private disposed = false;
@@ -130,6 +142,10 @@ export class UniverAdapter {
                 [LocaleType.EN_US]: mergeLocales(
                     CoreEnUS, FilterEnUS, SortEnUS, FindReplaceEnUS,
                     DataValidationEnUS, HyperLinkEnUS, DrawingEnUS, CfEnUS,
+                ),
+                [LocaleType.JA_JP]: mergeLocales(
+                    CoreJaJP, FilterJaJP, SortJaJP, FindReplaceJaJP,
+                    DataValidationJaJP, HyperLinkJaJP, DrawingJaJP, CfJaJP,
                 ),
             },
             presets: [

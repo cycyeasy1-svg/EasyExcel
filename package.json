@@ -4,7 +4,7 @@
 	"description": "Preview and edit Excel, CSV, TSV, and ODS files in VS Code.",
 	"version": "1.0.0",
 	"publisher": "easychen",
-	"author": "Easy Chen",
+	"author": "easy-chen",
 	"icon": "image/logo.png",
 	"license": "MIT",
 	"repository": {

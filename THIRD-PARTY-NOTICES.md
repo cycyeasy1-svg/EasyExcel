@@ -1,10 +1,10 @@
 # Third-Party Notices
 
-EasyExcel には、以下のサードパーティ製ソフトウェアが含まれ、または同梱されています。各ソフトウェアはそれぞれのライセンスの下で提供されています。
+EasyExcel 包含或随附以下第三方软件，各软件按其各自的许可证提供。
 
-## 含まれるコードに関する表示
+## 所含代码的声明
 
-本拡張機能の VS Code 統合レイヤーの一部は、MIT License で公開されているコードを基にしています。当該部分には以下の表示が適用されます。
+本扩展的 VS Code 集成层部分基于以 MIT License 发布的代码，该部分适用以下声明：
 
 ```
 MIT License
@@ -30,22 +30,22 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## 同梱される主なライブラリ
+## 随附的主要库
 
-| パッケージ | ライセンス | 著作権者 |
+| 包 | 许可证 | 版权所有者 |
 | --- | --- | --- |
 | [@univerjs/presets](https://github.com/dream-num/univer) | Apache-2.0 | DreamNum Co., Ltd. |
-| [@cweijan/exceljs](https://www.npmjs.com/package/@cweijan/exceljs) (ExcelJS fork) | MIT | Guyon Roche ほか contributors |
-| [exceljs](https://github.com/exceljs/exceljs) | MIT | Guyon Roche ほか contributors |
+| [@cweijan/exceljs](https://www.npmjs.com/package/@cweijan/exceljs)（ExcelJS fork） | MIT | Guyon Roche 及贡献者 |
+| [exceljs](https://github.com/exceljs/exceljs) | MIT | Guyon Roche 及贡献者 |
 | [xlsx (SheetJS CE)](https://sheetjs.com/) | Apache-2.0 | SheetJS LLC |
-| [jszip](https://github.com/Stuk/jszip) | MIT (MIT/GPLv3 デュアル) | Stuart Knightley ほか |
+| [jszip](https://github.com/Stuk/jszip) | MIT（MIT/GPLv3 双许可） | Stuart Knightley 等 |
 | [react](https://react.dev/) / [react-dom](https://react.dev/) | MIT | Meta Platforms, Inc. |
 | [antd](https://ant.design/) | MIT | Ant Design Team |
 | [@ant-design/icons](https://github.com/ant-design/ant-design-icons) | MIT | Ant Design Team |
-| [@vscode/codicons](https://github.com/microsoft/vscode-codicons) | CC-BY-4.0 (アイコン) / MIT (コード) | Microsoft Corporation |
+| [@vscode/codicons](https://github.com/microsoft/vscode-codicons) | CC-BY-4.0（图标）/ MIT（代码） | Microsoft Corporation |
 | [iconv-lite](https://github.com/ashtuchkin/iconv-lite) | MIT | Alexander Shtuchkin |
 | [udsv](https://github.com/leeoniya/uDSV) | MIT | Leon Sorokin |
-| [buffer](https://github.com/feross/buffer) | MIT | Feross Aboukhadijeh ほか |
-| [axios](https://github.com/axios/axios) | MIT | Matt Zabriskie ほか |
+| [buffer](https://github.com/feross/buffer) | MIT | Feross Aboukhadijeh 等 |
+| [axios](https://github.com/axios/axios) | MIT | Matt Zabriskie 等 |
 
-各パッケージの完全なライセンス文はそれぞれの配布物・リポジトリに含まれています。MIT License の全文は上記のとおりです。Apache License 2.0 の全文は <https://www.apache.org/licenses/LICENSE-2.0> を、CC-BY-4.0 の全文は <https://creativecommons.org/licenses/by/4.0/> を参照してください。
+各包的完整许可证文本包含在其各自的发行物与仓库中。MIT License 全文见上。Apache License 2.0 全文见 <https://www.apache.org/licenses/LICENSE-2.0>，CC-BY-4.0 全文见 <https://creativecommons.org/licenses/by/4.0/>。

@@ -1,9 +1,9 @@
 /**
  * 独立 i18n（外壳 UI 文案）。表格引擎内部文案由 Univer 自带 locale 提供，
  * 这里只覆盖 Excel.tsx 的对话框/横幅/控件字符串。
- * de/nl 等其余语言回退 en（引擎 UI 仍是对应语言的 Univer locale）。
+ * 语言由用户在界面右上角选择并持久化（默认简体中文），不跟随 VSCode 显示语言。
  */
-import { getConfigs } from '../../util/vscodeConfig.ts';
+import { loadLanguage } from '../../util/vscode.ts';
 
 type Messages = Record<string, string>;
 
@@ -38,6 +38,10 @@ const en: Messages = {
     'viewer.structuralBlocked': 'Please do this in Excel — structural changes (rows/columns/sheets, merges, sizes, freeze, validation, conditional formatting) are disabled so saving never alters untouched content',
     'viewer.patchBlockedSave': 'This edit cannot be saved without altering untouched content. Undo it and retry, or make the change in Excel',
     'viewer.richTextDowngraded': 'Rich-text cells were saved as plain text',
+    'viewer.language': 'Language',
+    'viewer.langSwitchTitle': 'Switch language',
+    'viewer.langSwitchContent': 'Switching language reloads the spreadsheet. Unsaved changes will be lost.',
+    'viewer.langSwitchAnyway': 'Switch anyway',
 };
 
 const zhCn: Messages = {
@@ -71,6 +75,10 @@ const zhCn: Messages = {
     'viewer.structuralBlocked': '此操作请在 Excel 中进行 —— 为保证保存不改动未编辑的内容，插删行列/工作表、合并、行高列宽、冻结、数据验证、条件格式已禁用',
     'viewer.patchBlockedSave': '本次编辑包含无法无损保存的修改，请撤销后重试，或在 Excel 中进行该修改',
     'viewer.richTextDowngraded': '富文本单元格已按纯文本保存',
+    'viewer.language': '语言',
+    'viewer.langSwitchTitle': '切换语言',
+    'viewer.langSwitchContent': '切换语言将重新加载表格，未保存的更改会丢失。',
+    'viewer.langSwitchAnyway': '仍要切换',
 };
 
 const zhTw: Messages = {
@@ -104,6 +112,47 @@ const zhTw: Messages = {
     'viewer.structuralBlocked': '此操作請在 Excel 中進行 —— 為確保儲存不更動未編輯的內容，插刪列欄/工作表、合併、列高欄寬、凍結、資料驗證、設定格式化的條件已停用',
     'viewer.patchBlockedSave': '本次編輯包含無法無損儲存的修改，請復原後重試，或在 Excel 中進行該修改',
     'viewer.richTextDowngraded': '富文字儲存格已以純文字儲存',
+    'viewer.language': '語言',
+    'viewer.langSwitchTitle': '切換語言',
+    'viewer.langSwitchContent': '切換語言將重新載入表格，未儲存的變更會遺失。',
+    'viewer.langSwitchAnyway': '仍要切換',
+};
+
+const ja: Messages = {
+    'button.cancel': 'キャンセル',
+    'button.save': '保存',
+    'button.saveAs': '名前を付けて保存',
+    'viewer.readonlyBanner': '読み取り専用モード — 閲覧と検索が可能です。変更を保存するには「名前を付けて保存」をご利用ください',
+    'viewer.formatCannotPreserveTitle': '書式を保存できません',
+    'viewer.formatCannotPreserveContent': '{} 形式ではスタイル・結合セル・数式などの書式を保存できません。xlsx として保存しますか？',
+    'viewer.saveAsXlsx': 'xlsx で保存',
+    'viewer.saveAsOriginal': '元の形式で保存',
+    'viewer.chooseExportFormat': 'エクスポート形式を選択',
+    'viewer.exportXlsxLabel': 'Excel ブック (.xlsx)',
+    'viewer.exportXlsxDesc': 'スタイル・数式・結合セルに対応',
+    'viewer.exportCsvLabel': 'CSV (.csv)',
+    'viewer.exportCsvDesc': 'プレーンテキスト、先頭シートのみ',
+    'viewer.exportXlsLabel': 'Excel 97-2003 (.xls)',
+    'viewer.exportXlsDesc': '旧形式の Excel',
+    'viewer.exportOdsLabel': 'OpenDocument (.ods)',
+    'viewer.exportOdsDesc': 'LibreOffice / WPS と互換',
+    'viewer.switchToLightMode': 'ライトモードに切り替え',
+    'viewer.switchToDarkMode': 'ダークモードに切り替え',
+    'viewer.zoom': 'ズーム',
+    'viewer.zoomOut': '縮小',
+    'viewer.zoomIn': '拡大',
+    'viewer.lossyTitle': '一部の内容を保持できません',
+    'viewer.lossyContent': 'このファイルにはグラフ、ピボットテーブル、またはマクロが含まれています。コピーをエクスポートするとこれらは失われます（元のファイルは変更されません）。',
+    'viewer.lossySaveAnyway': 'このまま保存',
+    'viewer.saveFailed': '保存に失敗しました。開発者コンソールをご確認ください',
+    'viewer.saved': '保存しました',
+    'viewer.structuralBlocked': 'この操作は Excel で行ってください —— 保存時に未編集の内容が変わらないよう、行・列やシートの挿入/削除、結合、行高・列幅、固定、データの入力規則、条件付き書式は無効化されています',
+    'viewer.patchBlockedSave': 'この編集は無損失で保存できません。元に戻してからやり直すか、Excel で編集してください',
+    'viewer.richTextDowngraded': 'リッチテキストのセルはプレーンテキストとして保存されました',
+    'viewer.language': '言語',
+    'viewer.langSwitchTitle': '言語を切り替え',
+    'viewer.langSwitchContent': '言語を切り替えると表が再読み込みされ、未保存の変更は失われます。',
+    'viewer.langSwitchAnyway': 'それでも切り替える',
 };
 
 const TRADITIONAL_ZH = new Set(['zh-tw', 'zh-hk', 'zh-mo', 'zh-hant']);
@@ -113,6 +162,7 @@ function resolveMessages(vscodeLang: string): Messages {
     const lower = (vscodeLang || 'en').toLowerCase();
     if (SIMPLIFIED_ZH.has(lower)) return zhCn;
     if (TRADITIONAL_ZH.has(lower)) return zhTw;
+    if (lower.startsWith('ja')) return ja;
     return en;
 }
 
@@ -121,7 +171,13 @@ let initialized = false;
 
 export function initExcelLocale(): void {
     if (initialized) return;
-    messages = resolveMessages(getConfigs()?.language ?? 'en');
+    messages = resolveMessages(loadLanguage());
+    initialized = true;
+}
+
+/** 用户在界面上切换语言时调用（外壳文案即时生效，引擎 locale 需重建 Univer） */
+export function setExcelLocale(language: string): void {
+    messages = resolveMessages(language);
     initialized = true;
 }
 

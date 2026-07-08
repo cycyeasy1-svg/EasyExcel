@@ -31,6 +31,32 @@ export function applyDarkMode(dark: boolean) {
     saveDarkMode(dark);
 }
 
+// 界面语言：用户手动选择并持久化，不跟随 VSCode 显示语言；默认简体中文
+const LANGUAGE_KEY = 'easyexcel-language';
+const DEFAULT_LANGUAGE = 'zh-cn';
+
+export function loadLanguage(): string {
+    const state = vscode?.getState?.() as { language?: string } | undefined;
+    if (state?.language) {
+        return state.language;
+    }
+    try {
+        return localStorage.getItem(LANGUAGE_KEY) || DEFAULT_LANGUAGE;
+    } catch {
+        return DEFAULT_LANGUAGE;
+    }
+}
+
+export function applyLanguage(language: string) {
+    try {
+        localStorage.setItem(LANGUAGE_KEY, language);
+    } catch { }
+    if (vscode?.setState) {
+        const prev = (vscode.getState?.() ?? {}) as Record<string, unknown>;
+        vscode.setState({ ...prev, language });
+    }
+}
+
 const events = {}
 function receive({ data }) {
     if (!data)

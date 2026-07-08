@@ -388,13 +388,6 @@ body:has(.excel-app) {
         }
     }
 
-    .excel-footer-actions .dark-mode-toggle {
-        position: fixed;
-        top: 7px;
-        right: 10px;
-        bottom: auto;
-        z-index: 1001;
-    }
 
     .excel-load-error {
         position: fixed;
@@ -470,35 +463,30 @@ body:has(.excel-app) {
         border-bottom-color: rgba(255, 255, 255, 0.08);
     }
 
-    .excel-footer-actions {
+    // 右上角操作区：保存/另存为 + 语言 + 主题（避开 Univer 自带的底部状态栏）
+    .excel-topbar-actions {
         position: fixed;
-        right: 12px;
-        bottom: 6px;
-        z-index: 1000;
+        top: 7px;
+        right: 10px;
+        z-index: 1001;
         display: flex;
         align-items: center;
-        gap: 10px;
-        pointer-events: none;
-
-        > * {
-            pointer-events: auto;
-        }
+        gap: 8px;
     }
 
-    .excel-zoom-control {
-        height: 30px;
+    .excel-action-group {
+        height: 28px;
         display: inline-flex;
         align-items: center;
         overflow: hidden;
         border: 1px solid rgba(128, 128, 128, 0.35);
         border-radius: 6px;
-        background: rgba(255, 255, 255, 0.9);
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+        background: rgba(255, 255, 255, 0.85);
     }
 
-    .excel-zoom-button {
+    .excel-action-button {
         width: 30px;
-        height: 28px;
+        height: 100%;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -513,20 +501,6 @@ body:has(.excel-app) {
             cursor: default;
             opacity: 0.42;
         }
-    }
-
-    .excel-zoom-select {
-        width: 70px;
-        height: 28px;
-        padding: 0 8px;
-        border: 0;
-        border-left: 1px solid rgba(128, 128, 128, 0.22);
-        border-right: 1px solid rgba(128, 128, 128, 0.22);
-        outline: none;
-        color: #2c3e50;
-        background: transparent;
-        font: inherit;
-        cursor: pointer;
     }
 
     --excel-footer-reserve: 56px;
@@ -1120,24 +1094,17 @@ body.easyexcel-dark .excel-viewer {
         }
     }
 
-    .excel-zoom-control {
+    .excel-action-group {
         background-color: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-sideBarSectionHeader-background, #252526));
         border-color: var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.45));
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
     }
 
-    .excel-zoom-button,
-    .excel-zoom-select {
+    .excel-action-button {
         color: var(--vscode-editor-foreground, #cccccc);
     }
 
-    .excel-zoom-button:hover:not(:disabled) {
+    .excel-action-button:hover:not(:disabled) {
         background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
-    }
-
-    .excel-zoom-select {
-        border-left-color: var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.45));
-        border-right-color: var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.45));
     }
 }
 
