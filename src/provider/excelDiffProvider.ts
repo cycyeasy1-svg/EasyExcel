@@ -6,8 +6,8 @@ import { getExtensionResourceRoots } from '@/common/extensionResource';
 import { bytesToPayloadBuffer } from './excelDocumentContent';
 
 const EXCEL_DIFF_VIEW_TYPE = 'easychen.easyExcelDiff';
-const OPEN_EXCEL_DIFF_COMMAND = 'easyexcel.openDiff';
-const SUPPORTED_EXCEL_SUFFIXES = new Set(['.xlsx', '.xlsm', '.xls', '.csv', '.tsv', '.ods']);
+export const OPEN_EXCEL_DIFF_COMMAND = 'easyexcel.openDiff';
+export const SUPPORTED_EXCEL_SUFFIXES = new Set(['.xlsx', '.xlsm', '.xls', '.csv', '.tsv', '.ods']);
 const MAX_GIT_BUFFER_BYTES = 80 * 1024 * 1024;
 
 type DiffSide = {
@@ -161,7 +161,25 @@ async function buildDiffPayload(uri: vscode.Uri): Promise<ExcelDiffPayload> {
     };
 }
 
-async function openDiffPanel(context: vscode.ExtensionContext, payload: ExcelDiffPayload) {
+interface DiffPanel {
+    panel: vscode.WebviewPanel;
+    /** Mutable: a reused panel replays the latest payload, not the one it opened with. */
+    payload: ExcelDiffPayload;
+}
+
+/** One panel per file, keyed by URI — repeated diffs of the same file reuse it. */
+const openPanels = new Map<string, DiffPanel>();
+
+async function openDiffPanel(context: vscode.ExtensionContext, key: string, payload: ExcelDiffPayload) {
+    const existing = openPanels.get(key);
+    if (existing) {
+        existing.payload = payload;
+        existing.panel.reveal();
+        // The webview is retained, so it will not re-send `init`. Push directly.
+        void existing.panel.webview.postMessage({ type: 'diffOpen', content: payload });
+        return;
+    }
+
     const panel = vscode.window.createWebviewPanel(
         EXCEL_DIFF_VIEW_TYPE,
         `Excel Diff: ${payload.fileName}`,
@@ -173,9 +191,15 @@ async function openDiffPanel(context: vscode.ExtensionContext, payload: ExcelDif
         }
     );
 
+    const entry: DiffPanel = { panel, payload };
+    openPanels.set(key, entry);
+    panel.onDidDispose(() => {
+        if (openPanels.get(key) === entry) openPanels.delete(key);
+    });
+
     panel.webview.onDidReceiveMessage(message => {
         if (message.type === 'init') {
-            void panel.webview.postMessage({ type: 'diffOpen', content: payload });
+            void panel.webview.postMessage({ type: 'diffOpen', content: entry.payload });
             return;
         }
         if (message.type === 'developerTool') {
@@ -186,20 +210,34 @@ async function openDiffPanel(context: vscode.ExtensionContext, payload: ExcelDif
     await ReactApp.view(panel.webview, { route: 'excel-diff' });
 }
 
+/** Files whose payload is still being built — a second click must not race a second panel in. */
+const pendingDiffs = new Set<string>();
+
+export async function runExcelDiff(context: vscode.ExtensionContext, uri: vscode.Uri): Promise<void> {
+    const key = uri.toString();
+    if (pendingDiffs.has(key)) return;
+    pendingDiffs.add(key);
+
+    try {
+        const payload = await buildDiffPayload(uri);
+        await openDiffPanel(context, key, payload);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message !== 'Excel diff cancelled.') {
+            void vscode.window.showErrorMessage(message);
+        }
+    } finally {
+        pendingDiffs.delete(key);
+    }
+}
+
 export function registerExcelDiffCommand(context: vscode.ExtensionContext): vscode.Disposable {
     return vscode.commands.registerCommand(OPEN_EXCEL_DIFF_COMMAND, async (input?: unknown) => {
-        try {
-            const uri = extractUri(input);
-            if (!uri) {
-                throw new Error('Select an Excel file to compare.');
-            }
-            const payload = await buildDiffPayload(uri);
-            await openDiffPanel(context, payload);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            if (message !== 'Excel diff cancelled.') {
-                void vscode.window.showErrorMessage(message);
-            }
+        const uri = extractUri(input);
+        if (!uri) {
+            void vscode.window.showErrorMessage('Select an Excel file to compare.');
+            return;
         }
+        await runExcelDiff(context, uri);
     });
 }

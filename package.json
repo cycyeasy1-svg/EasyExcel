@@ -12,7 +12,7 @@
 		"url": "https://github.com/cycyeasy1-svg/EasyExcel.git"
 	},
 	"engines": {
-		"vscode": "^1.64.0"
+		"vscode": "^1.67.0"
 	},
 	"keywords": [
 		"excel",
@@ -30,10 +30,21 @@
 	],
 	"activationEvents": [
 		"onCustomEditor:easychen.easyExcel",
-		"onCommand:easyexcel.openDiff"
+		"onCommand:easyexcel.openDiff",
+		"onStartupFinished"
 	],
 	"main": "./out/extension.js",
 	"contributes": {
+		"configuration": {
+			"title": "EasyExcel",
+			"properties": {
+				"easyexcel.interceptScmDiff": {
+					"type": "boolean",
+					"default": true,
+					"description": "Open the EasyExcel diff view when clicking a changed spreadsheet in Source Control. Disable to keep VS Code's default side-by-side preview."
+				}
+			}
+		},
 		"commands": [
 			{
 				"command": "easyexcel.openDiff",
